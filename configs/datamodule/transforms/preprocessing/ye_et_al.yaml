@@ -29,9 +29,9 @@ resizer:
 #       n_stft: 2206
 
 melscale_conversion: [
-  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22050, n_stft: 2206 },
-  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22050, n_stft: 2206 },
-  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22050, n_stft: 2206 }
+  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22500, n_stft: 2206 },
+  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22500, n_stft: 2206 },
+  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22500, n_stft: 2206 }
 ]
 
 dbscale_conversion: null
