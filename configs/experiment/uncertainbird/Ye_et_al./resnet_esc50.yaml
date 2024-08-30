@@ -34,6 +34,7 @@ module:
   network:
     model:
       num_channels: 3
+      baseline_architecture: 'resnet50'
 
 
 datamodule:
