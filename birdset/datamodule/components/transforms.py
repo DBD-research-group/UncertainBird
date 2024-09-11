@@ -2,7 +2,7 @@ from typing import Literal
 from birdset import utils
 
 import numpy as np
-from omegaconf import DictConfig
+from omegaconf import DictConfig, ListConfig
 from birdset.datamodule.components.feature_extraction import DefaultFeatureExtractor
 from birdset.datamodule.components.event_decoding import EventDecoding
 from birdset.datamodule.components.augmentations import NoCallMixer, PowerToDB
@@ -25,13 +25,13 @@ class PreprocessingConfig:
     Attributes
     ----------
     spectrogram_conversion : Spectrogram
-        The configuration for converting the audio waveform to a spectrogram. If not provided, a default Spectrogram configuration is used.
+        The configuration for converting the audio waveform to a spectrogram. If not provided, a default Spectrogram configuration is used. Can also be a list of Spectrogram configurations for multiple channels.
     resizer : Resizer
         The configuration for resizing the spectrogram. If not provided, a default Resizer configuration is used.
     melscale_conversion : MelScale
-        The configuration for converting the spectrogram to a Mel scale. If not provided, a default MelScale configuration is used.
+        The configuration for converting the spectrogram to a Mel scale. If not provided, a default MelScale configuration is used. Can also be a list of MelScale configurations for multiple channels.
     dbscale_conversion : PowerToDB
-        The configuration for converting the spectrogram to a dB scale. If not provided, a default PowerToDB configuration is used.
+        The configuration for converting the spectrogram to a dB scale. If not provided, a default PowerToDB configuration is used. Can also be a list of PowerToDB configurations for multiple channels.
     normalize_spectrogram : bool
         Whether to normalize the spectrogram. Defaults to True.
     normalize_waveform : bool, optional
@@ -43,7 +43,7 @@ class PreprocessingConfig:
     """
     def __init__(
         self,
-        spectrogram_conversion: Spectrogram | None = Spectrogram(
+        spectrogram_conversion: Spectrogram | None | list[Spectrogram] = Spectrogram(
             n_fft=1024,
             hop_length=320,
             power=2.0,
@@ -51,12 +51,12 @@ class PreprocessingConfig:
         resizer: Resizer | None = Resizer(
             db_scale=True, # manually adjusted!! False when not using it
         ),
-        melscale_conversion: MelScale | None = MelScale(
+        melscale_conversion: MelScale | None | list[MelScale] = MelScale(
             n_mels=128,
             sample_rate=32000,
             n_stft=513, # n_fft//2+1!!! how to include in code
         ),
-        dbscale_conversion: PowerToDB | None = PowerToDB(),
+        dbscale_conversion: PowerToDB | None | list[PowerToDB] = PowerToDB(),
         normalize_spectrogram=True,
         normalize_waveform=None,
         mean=-4.268,  # calculated on AudioSet
@@ -277,26 +277,47 @@ class BirdSetTransformsWrapper(BaseTransforms):
             input_values = self._waveform_scaling(input_values, attention_mask)
         
         if self.model_type == "vision" and self.preprocessing.spectrogram_conversion is not None:
-            spectrograms = self.preprocessing.spectrogram_conversion(input_values)
 
-            if self.spec_aug:
-                spectrograms = self.spec_aug(spectrograms)
+            # check if spectrogram conversion is a list
+            if isinstance(self.preprocessing.spectrogram_conversion, list) or isinstance(self.preprocessing.spectrogram_conversion, ListConfig) :
+                spectrograms_channels = []
+                # it is a list so we create a new spectrogram for each entry in the list which will be than provided as different channels for each entry
+                for channel in range(len(self.preprocessing.spectrogram_conversion)):
+                    spectrograms = self.preprocessing.spectrogram_conversion[channel](input_values)
+                    if self.spec_aug:
+                        spectrograms = self.spec_aug(spectrograms)
+                    if self.preprocessing.melscale_conversion:
+                        spectrograms = self.preprocessing.melscale_conversion[channel](spectrograms)
+                    if self.preprocessing.dbscale_conversion:
+                        spectrograms = self.preprocessing.dbscale_conversion[channel](spectrograms)
+                    if self.preprocessing.resizer:
+                        spectrograms = self.preprocessing.resizer.resize_spectrogram_batch(spectrograms)
+                    if self.preprocessing.normalize_spectrogram:
+                        spectrograms = (spectrograms - self.preprocessing.mean) / self.preprocessing.std
+                    spectrograms_channels.append(spectrograms)
+                input_values = torch.cat(spectrograms_channels, dim=1)
 
-            if self.preprocessing.melscale_conversion:
-                spectrograms = self.preprocessing.melscale_conversion(spectrograms)
+            else:
+                spectrograms = self.preprocessing.spectrogram_conversion(input_values)
 
-            if self.preprocessing.dbscale_conversion:
-                # spectrograms = [spectrogram.numpy() for spectrogram in spectrograms]
-                # spectrograms = torch.from_numpy(librosa.power_to_db(spectrograms)) #list to tensor!
-                spectrograms = self.preprocessing.dbscale_conversion(spectrograms) # different results??
+                if self.spec_aug:
+                    spectrograms = self.spec_aug(spectrograms)
 
-            if self.preprocessing.resizer:
-                spectrograms = self.preprocessing.resizer.resize_spectrogram_batch(spectrograms)
-                
-            if self.preprocessing.normalize_spectrogram:
-                spectrograms = (spectrograms - self.preprocessing.mean) / self.preprocessing.std
-            
-            input_values = spectrograms
+                if self.preprocessing.melscale_conversion:
+                    spectrograms = self.preprocessing.melscale_conversion(spectrograms)
+
+                if self.preprocessing.dbscale_conversion:
+                    # spectrograms = [spectrogram.numpy() for spectrogram in spectrograms]
+                    # spectrograms = torch.from_numpy(librosa.power_to_db(spectrograms)) #list to tensor!
+                    spectrograms = self.preprocessing.dbscale_conversion(spectrograms) # different results??
+
+                if self.preprocessing.resizer:
+                    spectrograms = self.preprocessing.resizer.resize_spectrogram_batch(spectrograms)
+                    
+                if self.preprocessing.normalize_spectrogram:
+                    spectrograms = (spectrograms - self.preprocessing.mean) / self.preprocessing.std
+                input_values = spectrograms
+
         return input_values
 
     

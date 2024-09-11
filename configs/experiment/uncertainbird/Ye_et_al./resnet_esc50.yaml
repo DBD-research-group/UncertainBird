@@ -2,6 +2,7 @@
 #package global is neccessary!
 defaults:
   - override /datamodule: esc50.yaml
+  - override /datamodule/transforms/preprocessing: ye_et_al.yaml
   - override /module: multiclass.yaml
   - override /module/network: resnet.yaml
   - override /callbacks: default.yaml 
@@ -27,16 +28,25 @@ callbacks:
 
 trainer:
   min_epochs: 1
-  max_epochs: 30
+  max_epochs: 101
+
+module:
+  optimizer:
+    lr: 2e-4
+    weight_decay: 2e-4
+  network:
+    model:
+      num_channels: 3
+      baseline_architecture: 'resnet50'
 
 
 datamodule:
   loaders:
     train:
-      batch_size: 64
-      num_workers: 16
+      batch_size: 32
+      num_workers: 8
     valid:
-      batch_size: 64
-      num_workers: 16
+      batch_size: 32
+      num_workers: 8
     test:
       batch_size: 6

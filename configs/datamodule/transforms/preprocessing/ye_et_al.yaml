@@ -1,0 +1,46 @@
+spectrogram_conversion: [{_target_: torchaudio.transforms.Spectrogram, n_fft: 4410, hop_length: 320, win_length: 800, power: 2.0},
+                         {_target_: torchaudio.transforms.Spectrogram, n_fft: 4410, hop_length: 800, win_length: 1600, power: 2.0},
+                         {_target_: torchaudio.transforms.Spectrogram, n_fft: 4410, hop_length: 800, win_length: 3200, power: 2.0}
+]
+
+
+
+resizer:
+  _target_: birdset.datamodule.components.resize.Resizer
+  db_scale: True # manually adjusted!! False when not using it
+  target_height: 128
+  target_width: 250
+
+# melscale_conversion:
+#   - MelScale:
+#       _target_: torchaudio.transforms.MelScale
+#       n_mels: 128
+#       sample_rate: ${module.network.sampling_rate}
+#       n_stft: 2206
+#   - MelScale:
+#       _target_: torchaudio.transforms.MelScale
+#       n_mels: 128
+#       sample_rate: ${module.network.sampling_rate}
+#       n_stft: 2206
+#   - MelScale:
+#       _target_: torchaudio.transforms.MelScale
+#       n_mels: 128
+#       sample_rate: ${module.network.sampling_rate}
+#       n_stft: 2206
+
+melscale_conversion: [
+  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22500, n_stft: 2206 },
+  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22500, n_stft: 2206 },
+  { _target_: torchaudio.transforms.MelScale, n_mels: 128, sample_rate: 22500, n_stft: 2206 }
+]
+
+dbscale_conversion: null
+
+normalize_spectrogram: False
+normalize_waveform: False
+# normalize_waveform: ${module.network.normalize_waveform}
+# normalize_spectrogram: ${module.network.normalize_spectrogram}
+mean: -4.268
+std: 4.569
+#mean: -15.854 # Mean of XCM: -15.854 ; Mean of XCL: -19.107
+#std: 12.911 # Standard deviation of XCM: 12.911 ; Standard deviation of XCL: 13.098
