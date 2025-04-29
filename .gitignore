@@ -1,4 +1,3 @@
-.vscode
 __pycache__
 wandb/
 *.egg-info
@@ -12,6 +11,7 @@ wandb/
 output_birdset/
 *.hydra
 *.ogg
+*.devcontainer
 
 data/*
 
@@ -163,7 +163,6 @@ dmypy.json
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
-**/.vscode
 
 # JetBrains
 .idea/
@@ -186,3 +185,5 @@ logs/
 saved_models/*
 
 lightning_logs/
+
+settings.json

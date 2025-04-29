@@ -11,8 +11,6 @@ class DatasetConfig:
     ----------
     data_dir : str
         Specifies the directory where the dataset files are stored.  **Important**: The dataset uses a lot of disk space, so make sure you have enough storage available.
-    dataset_name : str
-        The name assigned to the dataset.
     hf_path : str
         The path to the dataset stored on HuggingFace.
     hf_name : str
@@ -27,8 +25,8 @@ class DatasetConfig:
         Defines the type of task (e.g., 'multilabel' or 'multiclass').
     subset : int, optional
         A subset of the dataset to use. If None, the entire dataset is used.
-    sampling_rate : int
-        The sampling rate for audio data processing.
+    sample_rate : int
+        The sample rate for audio data processing.
     class_weights_loss : bool, optional
         (Deprecated) Previously used for applying class weights in loss calculation.
     class_weights_sampler : bool, optional
@@ -40,21 +38,23 @@ class DatasetConfig:
     direct_fingerprint: int, optional
         Only works with PretrainDatamodule. Path to a saved preprocessed dataset path
     """
+
     data_dir: str = "/workspace/data_birdset"
-    dataset_name: str = "esc50"
     hf_path: str = "ashraq/esc50"
-    hf_name: str = ""
+    hf_name: str = "esc50"
     seed: int = 42
     n_workers: int = 1
     val_split: float = 0.2
     task: Literal["multiclass", "multilabel"] = "multilabel"
     subset: Optional[int] = None
-    sampling_rate: int = 32_000
+    sample_rate: int = 32_000
     class_weights_loss: Optional[bool] = None
     class_weights_sampler: Optional[bool] = None
     classlimit: Optional[int] = None
     eventlimit: Optional[int] = None
-    direct_fingerprint: Optional[str] = None  # TODO only supported in PretrainDatamodule
+    direct_fingerprint: Optional[str] = (
+        None  # TODO only supported in PretrainDatamodule
+    )
 
 
 @dataclass
@@ -79,6 +79,7 @@ class LoaderConfig:
     prefetch_factor : int
         Defines the number of samples loaded in advance by each worker. This parameter is commented out here and can be adjusted based on specific requirements.
     """
+
     batch_size: int = 32
     shuffle: bool = True
     num_workers: int = 1
