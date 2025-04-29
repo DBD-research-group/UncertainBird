@@ -125,16 +125,12 @@ class MulticlassMetricsConfig:
                 num_classes=num_labels,
                 average='macro',
                 thresholds=None
-            )
+            ),
             "F1": F1Score(
                 task="multiclass",
                 num_classes=num_labels,
             ),
         })
-        self.eval_complete: MetricCollection = MetricCollection({
-            'acc': Accuracy(
-            task="multiclass",
-            num_classes=num_labels,
 
         self.eval_complete: MetricCollection = MetricCollection(
             {
