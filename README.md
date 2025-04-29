@@ -30,7 +30,7 @@ And install python dependencies with [poetry](https://python-poetry.org/).
 poetry install
 poetry shell
 ```
--->
+
 
 ## Run experiments
 
@@ -42,7 +42,7 @@ python birdset/train.py experiment=uncertainbird/Ye_et_al./resnet_esc50
 
 ## Reproduce Neurips2024 Baselines
 
-```
+
 
 The `audio` column natively contains only file paths. While automatic decoding via HF can be enabled (as shown above), decoding the entire audio files can introduce computational redundancies. This is because we provide flexible event decoding with varying file lengths that are often much longer than the targeted 5 seconds. To optimize, consider using a custom decoding scheme (e.g., with soundfile/BirdSet) or preprocessing the dataset with `.map` to include only the relevant audio segments.
 
