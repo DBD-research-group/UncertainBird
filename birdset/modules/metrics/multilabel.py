@@ -25,38 +25,35 @@ class MultilabelMetricsConfig:
         Args:
             num_labels (int): The number of labels in the dataset. Defaults to 21 as in the HSN dataset.
         """
-        self.main_metric: Metric = cmAP(
-            num_labels=num_labels,
-            thresholds=None
-        )
+        self.main_metric: Metric = cmAP(num_labels=num_labels, thresholds=None)
         self.val_metric_best: Metric = MaxMetric()
-        self.add_metrics: MetricCollection = MetricCollection({
-            'MultilabelAUROC': AUROC(
-                task="multilabel",
-                num_labels=num_labels,
-                average='macro',
-                thresholds=None
-            ),
-            'T1Accuracy': TopKAccuracy(topk= 1),
-            'T3Accuracy': TopKAccuracy(topk= 3),
-            'mAP': mAP(
-                num_labels= num_labels,
-                thresholds=None
-            )  
-        })
-        self.eval_complete: MetricCollection = MetricCollection({
-            'cmAP5': cmAP5(
-                num_labels=num_labels,
-                sample_threshold=5,
-                thresholds=None
-            ),
-            'pcmAP': pcmAP(
-                num_labels=num_labels,
-                padding_factor=5,
-                average="macro",
-                thresholds=None
-            )
-        })
+        self.add_metrics: MetricCollection = MetricCollection(
+            {
+                "MultilabelAUROC": AUROC(
+                    task="multilabel",
+                    num_labels=num_labels,
+                    average="macro",
+                    thresholds=None,
+                ),
+                "T1Accuracy": TopKAccuracy(topk=1),
+                "T3Accuracy": TopKAccuracy(topk=3),
+                "mAP": mAP(num_labels=num_labels, thresholds=None),
+            }
+        )
+        self.eval_complete: MetricCollection = MetricCollection(
+            {
+                "cmAP5": cmAP5(
+                    num_labels=num_labels, sample_threshold=5, thresholds=None
+                ),
+                "pcmAP": pcmAP(
+                    num_labels=num_labels,
+                    padding_factor=5,
+                    average="macro",
+                    thresholds=None,
+                ),
+            }
+        )
+
 
 class cmAP5(Metric):
     def __init__(
