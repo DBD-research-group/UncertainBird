@@ -78,7 +78,7 @@ def eval(cfg):
 
     if cfg.get("test"):
         log.info("Starting Testing")
-        trainer.test(model=model, datamodule=datamodule, ckpt_path=None)
+        trainer.test(model=model, datamodule=datamodule, ckpt_path="None")
         test_metrics = trainer.callback_metrics
     else:
         log.info("Predict not yet implemented")

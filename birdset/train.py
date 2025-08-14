@@ -8,6 +8,23 @@ from birdset import utils
 import pyrootutils
 from pathlib import Path
 import torch.nn as nn
+from pathlib import Path
+import sys
+
+# /workspace/birdset/train.py  -> parent twice = /workspace
+WORKSPACE = Path(__file__).resolve().parents[1]
+
+# Path where mc_predictor.py lives
+WRAPPER_DIR = WORKSPACE / "projects" / "uncertainbird" / "configs" / "experiment" / "Wrappers"
+
+# Make sure Python can find that folder (robust even when Hydra changes CWD)
+sys.path.insert(0, str(WRAPPER_DIR))
+
+# Now import your class/function
+
+from mc_runner import mc_predict
+
+import torch
 
 
 log = utils.get_pylogger(__name__)
@@ -119,28 +136,66 @@ def train(cfg):
     train_metrics = trainer.callback_metrics
 
     if cfg.get("test"):
-        log.info(f"Starting testing")
+        log.info("Starting testing")
+
+        # --- resolve checkpoint path exactly like before ---
         ckpt_path = trainer.checkpoint_callback.best_model_path
         if ckpt_path == "":
-            if cfg.get("ckpt_path") =="":
-
+            if cfg.get("ckpt_path") == "":
                 log.warning("No ckpt saved or found. Using current weights for testing")
                 ckpt_path = None
             else:
                 ckpt_path = cfg.get("ckpt_path")
                 log.info(
-                f"The best checkpoint for {cfg.callbacks.model_checkpoint.monitor}"
-                f" is {trainer.checkpoint_callback.best_model_score}"
-                f" and saved in {ckpt_path}"
-            )
+                    f"The best checkpoint for {cfg.callbacks.model_checkpoint.monitor}"
+                    f" is {trainer.checkpoint_callback.best_model_score}"
+                    f" and saved in {ckpt_path}"
+                )
         else:
             log.info(
                 f"The best checkpoint for {cfg.callbacks.model_checkpoint.monitor}"
                 f" is {trainer.checkpoint_callback.best_model_score}"
                 f" and saved in {ckpt_path}"
             )
-        
-        trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+
+        # --- branch: MC-Dropout vs normal test ---
+        if cfg.get("MCTest", False):
+            log.info("MC-Dropout mode enabled → running predict loop with T stochastic passes")
+            
+
+            mc_out = mc_predict(
+                trainer=trainer,
+                base_model=model,
+                datamodule=datamodule,
+                ckpt_path=ckpt_path,  # weights loaded manually inside mc_predict
+                T=int(cfg.get("MCTest_T", 10)),
+                threshold=float(cfg.get("MCTest_threshold", 0.5)),
+            )
+
+            # Optional: quick aggregate logs so you see something in the console
+            mean_var = mc_out["p_var"].mean().item()
+            mean_p   = mc_out["p_mean"].mean().item()
+            log.info(f"[MC] mean variance: {mean_var:.6f} | mean prob: {mean_p:.6f}")
+
+            # If downstream code expects trainer.callback_metrics, populate a few keys:
+            try:
+                trainer.callback_metrics.update({
+                    "mc/mean_var": torch.tensor(mean_var),
+                    "mc/mean_prob": torch.tensor(mean_p),
+                })
+            except Exception:
+                pass
+
+            # (Optional) save raw outputs for later analysis/calibration
+            if cfg.get("MCTest_save", False):
+                save_path = cfg.get("MCTest_save_path", "mc_outputs.pt")
+                torch.save(mc_out, save_path)
+                log.info(f"[MC] saved outputs to {save_path}")
+
+        else:
+            # Standard Lightning test loop
+            trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+
 
     test_metrics = trainer.callback_metrics
 

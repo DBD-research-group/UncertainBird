@@ -169,7 +169,7 @@ class BaseTransforms:
 
     def transform_labels(self, labels):
         if self.task == "multilabel":  # for bcelosswithlogits
-            labels = torch.tensor(labels, dtype=torch.float16)
+            labels = torch.tensor(labels, dtype=torch.float32)
 
         elif self.task == "multiclass":
             labels = labels

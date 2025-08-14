@@ -10,6 +10,9 @@ from torchmetrics.classification import (
     MulticlassAveragePrecision,
 )
 
+
+
+
 from birdset.modules.metrics.multilabel import TopKAccuracy, cmAP, cmAP5, mAP, pcmAP
 from birdset.modules.models.efficientnet import EfficientNetClassifier
 
@@ -173,6 +176,7 @@ class MultilabelMetricsConfig:
                     average="macro",
                     thresholds=None,
                 ),
+   
                 "T1Accuracy": TopKAccuracy(topk=1),
                 "T3Accuracy": TopKAccuracy(topk=3),
                 "mAP": mAP(num_labels=num_labels, thresholds=None),
