@@ -3,19 +3,23 @@
 defaults:
   - override /datamodule: HSN.yaml
   - override /module: multilabel.yaml
-  - override /module/network: resnet.yaml
+  - override /module/network: resnet_dropout.yaml
   - override /callbacks: default.yaml 
   - override /trainer: single_gpu.yaml
 
 
 tags: ["HSN", "resnet50", ] 
 seed: 1
+train: False
+test: True
+ckpt_path: /workspace/logs/train/runs/HSN/resnet50/2025-08-14_094006/callback_checkpoints/resnet50_HSN_36.ckpt
+
 
 logger:
   wandb:
     tags: ${tags}
     group: "HSN"
-    mode: online
+    mode: offline
     version: HSN_resnet_${seed}_${start_time}
 
 callbacks:
@@ -26,6 +30,7 @@ callbacks:
   model_checkpoint:
     monitor: "val/mAP" 
     mode : "max"
+
 
 trainer:
   min_epochs: 1

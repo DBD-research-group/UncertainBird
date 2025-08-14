@@ -7,6 +7,8 @@ import json
 from birdset import utils
 import pyrootutils
 from pathlib import Path
+import torch.nn as nn
+
 
 log = utils.get_pylogger(__name__)
 
@@ -22,6 +24,11 @@ _HYDRA_PARAMS = {
     "config_path": str(root / "configs"),
     "config_name": "train.yaml",
 }
+
+def log_dropout_layers(m):
+    for name, module in m.named_modules():
+        if isinstance(module, (nn.Dropout, nn.Dropout2d, nn.Dropout3d, nn.AlphaDropout, nn.FeatureAlphaDropout)):
+            log.info(f"[DROPOUT] {name}: {module.__class__.__name__}(p={module.p})")
 
 
 # @utils.register_custom_resolvers(**_HYDRA_PARAMS)
@@ -85,6 +92,8 @@ def train(cfg):
         pretrain_info=pretrain_info,
     )
 
+    log.info(model)
+
     object_dict = {
         "cfg": cfg,
         "datamodule": datamodule,
@@ -113,14 +122,24 @@ def train(cfg):
         log.info(f"Starting testing")
         ckpt_path = trainer.checkpoint_callback.best_model_path
         if ckpt_path == "":
-            log.warning("No ckpt saved or found. Using current weights for testing")
-            ckpt_path = None
+            if cfg.get("ckpt_path") =="":
+
+                log.warning("No ckpt saved or found. Using current weights for testing")
+                ckpt_path = None
+            else:
+                ckpt_path = cfg.get("ckpt_path")
+                log.info(
+                f"The best checkpoint for {cfg.callbacks.model_checkpoint.monitor}"
+                f" is {trainer.checkpoint_callback.best_model_score}"
+                f" and saved in {ckpt_path}"
+            )
         else:
             log.info(
                 f"The best checkpoint for {cfg.callbacks.model_checkpoint.monitor}"
                 f" is {trainer.checkpoint_callback.best_model_score}"
                 f" and saved in {ckpt_path}"
             )
+        
         trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
 
     test_metrics = trainer.callback_metrics
@@ -151,4 +170,5 @@ def train(cfg):
 
 
 if __name__ == "__main__":
+
     train()

@@ -1,0 +1,15 @@
+model:
+  _target_: projects.uncertainbird.configs.experiment.model_code.resnet_dropout.ResNetClassifier
+  baseline_architecture: 'resnet50'
+  num_classes: null
+  num_channels: 1
+  pretrained: True
+  pretrain_info: null
+
+model_name: resnet50
+model_type: vision
+torch_compile: False
+sample_rate: 32_000
+normalize_waveform: null
+normalize_spectrogram: True
+
