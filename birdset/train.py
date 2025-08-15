@@ -10,6 +10,7 @@ from pathlib import Path
 import torch.nn as nn
 from pathlib import Path
 import sys
+from torchmetrics.classification import MultilabelAUROC, MultilabelAveragePrecision
 
 # /workspace/birdset/train.py  -> parent twice = /workspace
 WORKSPACE = Path(__file__).resolve().parents[1]
@@ -22,7 +23,7 @@ sys.path.insert(0, str(WRAPPER_DIR))
 
 # Now import your class/function
 
-from mc_runner import mc_predict
+from mc_predictor import mc_predict
 
 import torch
 
@@ -160,40 +161,92 @@ def train(cfg):
 
         # --- branch: MC-Dropout vs normal test ---
         if cfg.get("MCTest", False):
-            log.info("MC-Dropout mode enabled → running predict loop with T stochastic passes")
+            BaseCls = model.__class__
+            best_base = BaseCls.load_from_checkpoint(ckpt_path, strict=True)
+            log.info("MC-Dropout mode enabled → running predict loop with T stochastic passes (using in-memory weights)")
+            # ensure import path to Wrappers is set (as you did before)
             
+            if hasattr(datamodule, "setup"):
+                try:
+                    datamodule.setup("test")   # prefer stage="test"
+                except TypeError:
+                    datamodule.setup() 
+                    
+            
+            def set_dropout_p(model, p: float):
+                model.eval()
+                for m in model.modules():
+                    if isinstance(m, (nn.Dropout, nn.Dropout2d, nn.Dropout3d, nn.AlphaDropout)):
+                        m.p = p
+                        m.train()
 
+            set_dropout_p(best_base, 0.05)
+            for m in best_base.modules():
+                if isinstance(m, (nn.Dropout, nn.Dropout2d, nn.Dropout3d, nn.AlphaDropout)):
+                    print(f"[MC] {m.__class__.__name__} p={m.p} training={m.training}")
+
+
+
+            # Now build the loader and pass it directly to predict()
+            dl = datamodule.test_dataloader()
             mc_out = mc_predict(
                 trainer=trainer,
-                base_model=model,
-                datamodule=datamodule,
-                ckpt_path=ckpt_path,  # weights loaded manually inside mc_predict
+                base_model=best_base,          # <- use current model weights
+                dataloader=dl,
                 T=int(cfg.get("MCTest_T", 10)),
-                threshold=float(cfg.get("MCTest_threshold", 0.5)),
+                threshold=float(cfg.get("MCTest_threshold", 0.7)),
+                ckpt_path=ckpt_path,
             )
+            probs  = mc_out["p_mean"].detach().cpu()
+            labels = mc_out["y"].detach().cpu().int()
+            N, C = probs.shape
 
-            # Optional: quick aggregate logs so you see something in the console
-            mean_var = mc_out["p_var"].mean().item()
-            mean_p   = mc_out["p_mean"].mean().item()
-            log.info(f"[MC] mean variance: {mean_var:.6f} | mean prob: {mean_p:.6f}")
+            auroc_macro = MultilabelAUROC(num_labels=C, average="macro")(probs, labels)
+            map_micro   = MultilabelAveragePrecision(num_labels=C, average="micro")(probs, labels)
 
-            # If downstream code expects trainer.callback_metrics, populate a few keys:
-            try:
-                trainer.callback_metrics.update({
-                    "mc/mean_var": torch.tensor(mean_var),
-                    "mc/mean_prob": torch.tensor(mean_p),
-                })
-            except Exception:
-                pass
+            def hit_at_k(p, y, k):
+                topk = p.topk(k, dim=1).indices
+                hits = y.gather(1, topk).max(1).values.float()
+                return float(hits.mean())
 
-            # (Optional) save raw outputs for later analysis/calibration
-            if cfg.get("MCTest_save", False):
-                save_path = cfg.get("MCTest_save_path", "mc_outputs.pt")
-                torch.save(mc_out, save_path)
-                log.info(f"[MC] saved outputs to {save_path}")
+            t1 = hit_at_k(probs, labels, 1)
+            t3 = hit_at_k(probs, labels, 3)
+
+            # cmAP5 (macro AP using only top-5 per sample)
+            if C >= 5:
+                top5 = probs.topk(5, dim=1).indices
+                mask = torch.zeros_like(probs, dtype=torch.bool)
+                mask.scatter_(1, top5, True)
+                probs_top5 = torch.where(mask, probs, torch.zeros_like(probs))
+            else:
+                probs_top5 = probs
+            cmAP5_macro = MultilabelAveragePrecision(num_labels=C, average="macro")(probs_top5, labels)
+
+            # pcmAP (per-class AP averaged = macro mAP)
+            map_per_class = MultilabelAveragePrecision(num_labels=C, average="none")(probs, labels)
+            pcmAP_macro = float(map_per_class.mean())
+
+            test_metrics = {
+                "test/MultilabelAUROC": float(auroc_macro),
+                "test/mAP":             float(map_micro),
+                "test/T1Accuracy":      t1,
+                "test/T3Accuracy":      t3,
+                "test/cmAP5":           float(cmAP5_macro),
+                "test/pcmAP":           pcmAP_macro,
+            }
+
+            for k, v in test_metrics.items():
+                trainer.callback_metrics[k] = torch.tensor(v)
+
+            trainer.callback_metrics.update({
+                "mc/mean_var": torch.tensor(mc_out["p_var"].mean().item()),
+                "mc/mean_prob": torch.tensor(mc_out["p_mean"].mean().item()),
+            })
+
+
+
 
         else:
-            # Standard Lightning test loop
             trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
 
 

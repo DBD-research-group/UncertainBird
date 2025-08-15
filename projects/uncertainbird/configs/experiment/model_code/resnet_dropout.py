@@ -17,8 +17,8 @@ class ResNetClassifier(nn.Module):
         num_channels: int = 1,
         pretrained: bool = False,
         # NEW:
-        p_block: Union[float, Sequence[float]] = 0.1,  # scalar or 4-tuple for layer1..4
-        p_fc: float = 0.1,    # dropout before final Linear
+        p_block: Union[float, Sequence[float]] = 0.0,  # scalar or 4-tuple for layer1..4
+        p_fc: float = 0.0,    # dropout before final Linear
         **kwargs                         
     ):
         super().__init__()

@@ -12,8 +12,8 @@ tags: ["HSN", "resnet50", ]
 seed: 1
 train: False
 test: True
-MCTest: False
 MCTest_T: 10
+MCTest: True
 MCTest_threshold: 0.5
 ckpt_path: /workspace/logs/train/runs/HSN/resnet50/2025-08-14_094006/callback_checkpoints/resnet50_HSN_36.ckpt
 
