@@ -180,7 +180,7 @@ def train(cfg):
                         m.p = p
                         m.train()
 
-            set_dropout_p(best_base, 0.05)
+            set_dropout_p(best_base, cfg.get("mcd_p"))
             for m in best_base.modules():
                 if isinstance(m, (nn.Dropout, nn.Dropout2d, nn.Dropout3d, nn.AlphaDropout)):
                     print(f"[MC] {m.__class__.__name__} p={m.p} training={m.training}")
