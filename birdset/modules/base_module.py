@@ -271,3 +271,7 @@ class BaseModule(L.LightningModule):
 
     def on_test_epoch_end(self):
         pass
+
+    def on_train_epoch_start(self):
+        if hasattr(self.model, "reset_cov"):
+            self.model.reset_cov()
