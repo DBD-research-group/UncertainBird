@@ -202,7 +202,28 @@ class MultilabelECEMacro(Metric):
         """
         probs: [N, C] probabilities in [0,1] (same dtype/device as model outputs; sigmoid outside)
         targets: [N, C] in {0,1}
+
         """
+
+        if probs.ndim > 2:
+            N, C = probs.shape[:2]
+            probs   = probs.reshape(N, C, -1).transpose(1, 2).reshape(-1, C)
+            targets = targets.reshape(N, C, -1).transpose(1, 2).reshape(-1, C)
+
+        if not torch.isfinite(probs).all():
+            bad = probs[~torch.isfinite(probs)]
+            raise ValueError(f"[mECE] Non-finite probabilities detected (example: {bad.flatten()[:5].tolist()})")
+
+        # Auto-sigmoid if looks like logits (mirror AUROC)
+        if (probs.min() < 0) or (probs.max() > 1):
+            probs = probs.sigmoid()
+
+        probs = probs.clamp_(0.0, 1.0).nan_to_num_(nan=0.5, posinf=1.0, neginf=0.0)
+
+        # Targets must be binary
+        t_unique = torch.unique(targets)
+        if not torch.all((t_unique == 0) | (t_unique == 1)):
+            raise ValueError(f"[mECE] Targets must be binary {{0,1}}; got unique values: {t_unique.tolist()}")
         assert probs.ndim == 2 and probs.shape == targets.shape, "expected [N, C] probs/targets"
         self._ensure_device_dtype(probs)
 
@@ -263,6 +284,10 @@ class MultilabelECEMacro(Metric):
     @torch.no_grad()
     def compute(self) -> torch.Tensor:
         bin_mu, bin_prec_macro, bin_mass = self._per_bin_stats()
+        print("bin_count:", self.bin_count)
+        print("bin_sum_p:", self.bin_sum_p)
+        print("bin_tp:", self.bin_tp.sum(dim=1))
+        print("bin_fp:", self.bin_fp.sum(dim=1))
         return (bin_mass * (bin_prec_macro - bin_mu).abs()).sum()
 
     @torch.no_grad()

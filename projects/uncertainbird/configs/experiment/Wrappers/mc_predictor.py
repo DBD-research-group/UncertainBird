@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from lightning.pytorch import LightningModule
 from typing import Any, Dict, List, Tuple, Optional, Union
+from birdset.modules.metrics.multilabel import MultilabelECEMacro, TopKAccuracy
 
 # torchmetrics (only imported if we compute metrics)
 try:
@@ -340,12 +341,21 @@ class MCDropoutPredictor(LightningModule):
         if self.task == "multilabel":
             probs_t = probs.clone()
             targ_t = targets.clone().to(torch.int64)
+            probs_t = probs_t.float()
+            
+            print("probs_t:", probs_t[:5])   # print first 5 samples
+            print("targ_t:", targ_t[:5])
+
 
             # mAP & AUROC (macro)
             m1 = MultilabelAveragePrecision(num_labels=self.num_labels, average=self.average)
             m2 = MultilabelAUROC(num_labels=self.num_labels, average=self.average)
+            m3 = MultilabelECEMacro(num_labels=self.num_labels, bins=10, threshold=0.5)
+            
+
             metrics["mc/mAP_macro"] = float(m1(probs_t, targ_t).item())
             metrics["mc/AUROC_macro"] = float(m2(probs_t, targ_t).item())
+            metrics["mc/mECE"] = float(m3(probs_t, targ_t).item())
 
             # Top-k multilabel accuracy (hit if any true class in top-k)
             with torch.no_grad():
