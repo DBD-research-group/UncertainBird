@@ -6,6 +6,8 @@ import torch.nn as nn
 from lightning.pytorch import LightningModule
 from typing import Any, Dict, List, Tuple, Optional, Union
 from birdset.modules.metrics.multilabel import MultilabelECEMacro, TopKAccuracy
+from reliability import save_reliability_plot
+import os
 
 # torchmetrics (only imported if we compute metrics)
 try:
@@ -150,6 +152,7 @@ class MCDropoutPredictor(LightningModule):
         compute_metrics: bool = True,
         average: str = "macro",
         topk_eval: Tuple[int, int] = (1, 3),
+        plot_path: str= None,
     ):
         super().__init__()
         self.base_model = base_model
@@ -160,6 +163,7 @@ class MCDropoutPredictor(LightningModule):
         self.compute_metrics = compute_metrics and _HAS_TM
         self.average = average
         self.topk_eval = topk_eval
+        self.plot_path = plot_path
 
         # buffers for metrics
         self._probs: List[torch.Tensor] = []
@@ -296,31 +300,33 @@ class MCDropoutPredictor(LightningModule):
         self.final_metrics = {}
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        self._activate_mc_dropout()
+        # If you actually want stochastic passes, make sure this is ON:
+        # self._activate_mc_dropout()
+
         x, y = self._get_xy(batch)
 
-        probs_T = []
+        logits_T = []
         with torch.no_grad():
             for _ in range(self.T):
-                logits = self.base_model(x)  # [B, C]
-                if self.task == "multilabel":
-                    probs_T.append(torch.sigmoid(logits))
-                else:  # multiclass
-                    probs_T.append(torch.softmax(logits, dim=-1))
+                logits = self.base_model(x)            # [B, C] raw logits
+                logits_T.append(logits)
 
-        probs_T = torch.stack(probs_T, dim=0)  # [T, B, C]
-        p_mean = probs_T.mean(dim=0)           # [B, C]
-        p_var = probs_T.var(dim=0, unbiased=False)
+        logits_T  = torch.stack(logits_T, dim=0)       # [T, B, C]
+        logit_mean = logits_T.mean(dim=0)              # [B, C]
 
-        # predictions
+        # Final MC probability estimate: sigmoid/softmax of mean logits
         if self.task == "multilabel":
-            y_hat = (p_mean > self.threshold).int()
-        else:
-            y_hat = p_mean.argmax(dim=-1)  # [B]
+            p_mean = torch.sigmoid(logit_mean)         # [B, C]
+            # optional: variance of probs across passes (for logging/uncertainty)
+            p_var  = torch.sigmoid(logits_T).var(dim=0, unbiased=False)
+            y_hat  = (p_mean > self.threshold).int()
+        else:  # multiclass
+            p_mean = torch.softmax(logit_mean, dim=-1) # [B, C]
+            p_var  = torch.softmax(logits_T, dim=-1).var(dim=0, unbiased=False)
+            y_hat  = p_mean.argmax(dim=-1)
 
         # collect for metrics
         if self.compute_metrics and (y is not None):
-            # For multiclass, ensure y is [B] int
             if self.task == "multiclass" and y.dim() > 1:
                 y = y.argmax(dim=-1)
             self._probs.append(p_mean.detach().cpu())
@@ -335,6 +341,17 @@ class MCDropoutPredictor(LightningModule):
 
         probs = torch.cat(self._probs, dim=0)     # [N, C]
         targets = torch.cat(self._targets, dim=0) # [N, C] (multilabel) or [N] (multiclass)
+
+        out_png = os.path.join(self.plot_path, "reliability_mc.png")
+        try:
+            ece_plot = save_reliability_plot(
+                preds=probs, target=targets,
+                path_png=out_png, bins=10, threshold=self.threshold,
+                title=f"Reliability T={self.T} (macro)"
+            )
+            
+        except Exception as e:
+            print("[reliability] plot failed:", e)
 
         metrics: Dict[str, float] = {}
 
@@ -351,21 +368,28 @@ class MCDropoutPredictor(LightningModule):
             m1 = MultilabelAveragePrecision(num_labels=self.num_labels, average=self.average)
             m2 = MultilabelAUROC(num_labels=self.num_labels, average=self.average)
             m3 = MultilabelECEMacro(num_labels=self.num_labels, bins=10, threshold=0.5)
+            m4 = TopKAccuracy(topk = 1)
+            m5 = TopKAccuracy(topk = 3)
             
 
             metrics["mc/mAP_macro"] = float(m1(probs_t, targ_t).item())
             metrics["mc/AUROC_macro"] = float(m2(probs_t, targ_t).item())
             metrics["mc/mECE"] = float(m3(probs_t, targ_t).item())
+            metrics["mc/T1Accuracy"] = float(m4(probs_t, targ_t).item())
+            metrics["mc/T3Accuracy"] = float(m5(probs_t, targ_t).item())
 
-            # Top-k multilabel accuracy (hit if any true class in top-k)
-            with torch.no_grad():
-                B, C = probs_t.shape
-                for k in self.topk_eval:
-                    k_eff = min(k, C)
-                    topk_idx = probs_t.topk(k_eff, dim=1).indices  # [B, k]
-                    true_mask = targ_t.bool()
-                    hit = true_mask.gather(1, topk_idx).any(dim=1)  # [B]
-                    metrics[f"mc/T{k}Accuracy"] = float(hit.float().mean().item())
+
+
+
+            # # Top-k multilabel accuracy (hit if any true class in top-k)
+            # with torch.no_grad():
+            #     B, C = probs_t.shape
+            #     for k in self.topk_eval:
+            #         k_eff = min(k, C)
+            #         topk_idx = probs_t.topk(k_eff, dim=1).indices  # [B, k]
+            #         true_mask = targ_t.bool()
+            #         hit = true_mask.gather(1, topk_idx).any(dim=1)  # [B]
+            #         metrics[f"mc/T{k}Accuracy"] = float(hit.float().mean().item())
 
         else:  # multiclass
             probs_t = probs.clone()
@@ -402,12 +426,13 @@ def mc_predict(
     base_model,
     datamodule=None,
     dataloader=None,
-    T: int = 10,
+    T: int = 40,
     threshold: float = 0.5,
     task: str = "multilabel",
     num_labels: Optional[int] = None,
     compute_metrics: bool = True,
     ckpt_path: Optional[str] = None,
+    plot_path: str= None,
 ):
     """
     Run MC-Dropout predict using the already-loaded base_model.
@@ -429,6 +454,7 @@ def mc_predict(
         task=task,
         num_labels=num_labels,
         compute_metrics=compute_metrics,
+        plot_path = plot_path,
     )
     dl = _resolve_dataloaders(datamodule=datamodule, dataloader=dataloader)
     outputs = trainer.predict(model=wrapper, dataloaders=dl, ckpt_path=ckpt_path)

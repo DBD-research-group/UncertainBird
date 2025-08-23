@@ -284,10 +284,10 @@ class MultilabelECEMacro(Metric):
     @torch.no_grad()
     def compute(self) -> torch.Tensor:
         bin_mu, bin_prec_macro, bin_mass = self._per_bin_stats()
-        print("bin_count:", self.bin_count)
-        print("bin_sum_p:", self.bin_sum_p)
-        print("bin_tp:", self.bin_tp.sum(dim=1))
-        print("bin_fp:", self.bin_fp.sum(dim=1))
+        # print("bin_count:", self.bin_count)
+        # print("bin_sum_p:", self.bin_sum_p)
+        # print("bin_tp:", self.bin_tp.sum(dim=1))
+        # print("bin_fp:", self.bin_fp.sum(dim=1))
         return (bin_mass * (bin_prec_macro - bin_mu).abs()).sum()
 
     @torch.no_grad()
