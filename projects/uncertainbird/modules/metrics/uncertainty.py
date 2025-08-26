@@ -82,6 +82,96 @@ def _process_bins_for_calibration(
     return confidences, accuracies
 
 
+def _process_quantile_bins_for_ace(
+    preds: Tensor, targets: Tensor, n_bins: int, norm: str = "l1"
+) -> Tensor:
+    """
+    Process predictions and targets using quantile-based binning for ACE computation.
+
+    Args:
+        preds: Predictions for a single label [N]
+        targets: Targets for a single label [N]
+        n_bins: Number of bins
+        norm: Norm to use ('l1', 'l2', or 'max')
+
+    Returns:
+        ACE value for this label
+    """
+    # Skip if no valid samples or no variation in targets
+    if preds.numel() == 0 or len(torch.unique(targets)) < 2:
+        return torch.tensor(0.0)
+
+    # Quantile-based binning: each bin contains equal number of samples
+    n_samples = preds.shape[0]
+    samples_per_bin = n_samples // n_bins
+
+    # Sort predictions and targets by prediction values
+    sorted_indices = torch.argsort(preds)
+    sorted_preds = preds[sorted_indices]
+    sorted_targets = targets[sorted_indices]
+
+    bin_confidences = []
+    bin_accuracies = []
+    bin_weights = []
+
+    for bin_idx in range(n_bins):
+        # Define bin boundaries based on sample quantiles
+        start_idx = bin_idx * samples_per_bin
+        if bin_idx == n_bins - 1:
+            # Last bin gets remaining samples
+            end_idx = n_samples
+        else:
+            end_idx = (bin_idx + 1) * samples_per_bin
+
+        if start_idx >= end_idx:
+            continue
+
+        bin_preds = sorted_preds[start_idx:end_idx]
+        bin_targets = sorted_targets[start_idx:end_idx]
+
+        if len(bin_preds) == 0:
+            continue
+
+        # Average confidence in this bin
+        avg_confidence = bin_preds.mean()
+
+        # Accuracy in this bin
+        accuracy = bin_targets.float().mean()
+
+        # Weight by number of samples in bin
+        weight = len(bin_preds) / n_samples
+
+        bin_confidences.append(avg_confidence)
+        bin_accuracies.append(accuracy)
+        bin_weights.append(weight)
+
+    if not bin_confidences:
+        return torch.tensor(0.0)
+
+    # Convert to tensors
+    confidences = torch.stack(bin_confidences)
+    accuracies = torch.stack(bin_accuracies)
+    weights = torch.tensor(
+        bin_weights, dtype=confidences.dtype, device=confidences.device
+    )
+
+    # Check for NaN values
+    if not torch.isfinite(confidences).all() or not torch.isfinite(accuracies).all():
+        return torch.tensor(0.0)
+
+    # Compute weighted calibration error for this label
+    if norm == "l1":
+        ace_label = (weights * torch.abs(confidences - accuracies)).sum()
+    elif norm == "l2":
+        ace_label = (weights * torch.pow(confidences - accuracies, 2)).sum()
+    elif norm == "max":
+        ace_label = torch.abs(confidences - accuracies).max()
+    else:
+        ace_label = (weights * torch.abs(confidences - accuracies)).sum()
+
+    return ace_label if torch.isfinite(ace_label) else torch.tensor(0.0)
+
+
 class MultilabelMetricsConfig:
     """
     A class for configuring the metrics used during model training and evaluation.
@@ -588,86 +678,12 @@ class MultilabelACE(Metric):
                 label_preds = all_preds[:, label_idx]  # [N_total]
                 label_targets = all_targets[:, label_idx]  # [N_total]
 
-                # Skip if no valid samples for this label
-                if label_preds.numel() == 0:
-                    continue
-
-                # Skip if no variation in targets
-                if len(torch.unique(label_targets)) < 2:
-                    continue
-
-                # Quantile-based binning: each bin contains equal number of samples
-                n_samples = label_preds.shape[0]
-                samples_per_bin = n_samples // self.n_bins
-
-                # Sort predictions and targets by prediction values
-                sorted_indices = torch.argsort(label_preds)
-                sorted_preds = label_preds[sorted_indices]
-                sorted_targets = label_targets[sorted_indices]
-
-                bin_confidences = []
-                bin_accuracies = []
-                bin_weights = []
-
-                for bin_idx in range(self.n_bins):
-                    # Define bin boundaries based on sample quantiles
-                    start_idx = bin_idx * samples_per_bin
-                    if bin_idx == self.n_bins - 1:
-                        # Last bin gets remaining samples
-                        end_idx = n_samples
-                    else:
-                        end_idx = (bin_idx + 1) * samples_per_bin
-
-                    if start_idx >= end_idx:
-                        continue
-
-                    bin_preds = sorted_preds[start_idx:end_idx]
-                    bin_targets = sorted_targets[start_idx:end_idx]
-
-                    if len(bin_preds) == 0:
-                        continue
-
-                    # Average confidence in this bin
-                    avg_confidence = bin_preds.mean()
-
-                    # Accuracy in this bin
-                    accuracy = bin_targets.float().mean()
-
-                    # Weight by number of samples in bin
-                    weight = len(bin_preds) / n_samples
-
-                    bin_confidences.append(avg_confidence)
-                    bin_accuracies.append(accuracy)
-                    bin_weights.append(weight)
-
-                if not bin_confidences:
-                    continue
-
-                # Convert to tensors
-                confidences = torch.stack(bin_confidences)
-                accuracies = torch.stack(bin_accuracies)
-                weights = torch.tensor(
-                    bin_weights, dtype=confidences.dtype, device=confidences.device
+                # Process quantile bins using utility function
+                ace_label = _process_quantile_bins_for_ace(
+                    label_preds, label_targets, self.n_bins, self.norm
                 )
 
-                # Check for NaN values
-                if (
-                    not torch.isfinite(confidences).all()
-                    or not torch.isfinite(accuracies).all()
-                ):
-                    continue
-
-                # Compute weighted calibration error for this label
-                if self.norm == "l1":
-                    ace_label = (weights * torch.abs(confidences - accuracies)).sum()
-                elif self.norm == "l2":
-                    ace_label = (weights * torch.pow(confidences - accuracies, 2)).sum()
-                elif self.norm == "max":
-                    ace_label = torch.abs(confidences - accuracies).max()
-                else:
-                    ace_label = (weights * torch.abs(confidences - accuracies)).sum()
-
-                if torch.isfinite(ace_label):
+                if torch.isfinite(ace_label) and ace_label > 0:
                     ace_values.append(ace_label)
 
             # Return average ACE across valid labels
