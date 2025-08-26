@@ -1,7 +1,7 @@
 # @package _global_
 defaults:
   - override /datamodule: HSN.yaml
-  - override /module: multilabel.yaml
+  - override /module: multilabel-uncertainty.yaml
   - override /module/network: convnext.yaml
   - override /callbacks: default.yaml
   - override /trainer: single_gpu.yaml
@@ -41,6 +41,7 @@ datamodule:
     class_weights_sampler: null
     classlimit: null
     eventlimit: null
+    num_classes: 9736  # Override number of classes to match BirdSetLT
 
   loaders:
     test:

@@ -55,6 +55,9 @@ class DatasetConfig:
     direct_fingerprint: Optional[str] = (
         None  # TODO only supported in PretrainDatamodule
     )
+    num_classes: Optional[int] = (
+        None  # For overriding the number of classes from the HF dataset
+    )
 
 
 @dataclass
