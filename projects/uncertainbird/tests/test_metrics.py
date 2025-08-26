@@ -6,13 +6,13 @@ following the One-vs-All (OvA) decomposition approach from the paper.
 
 Usage with Poetry (from uncertainbird directory):
     # Run full test suite
-    poetry run pytest tests/metrics.py -v
+    poetry run pytest tests/test_metrics.py -v
 
     # Run smoke test only
-    poetry run python tests/metrics.py
+    poetry run python tests/test_metrics.py
 
     # Run specific test class
-    poetry run pytest tests/metrics.py::TestMultilabelCalibrationError -v
+    poetry run pytest tests/test_metrics.py::TestMultilabelCalibrationError -v
 """
 
 import torch
@@ -776,6 +776,6 @@ if __name__ == "__main__":
 
     print("Smoke tests passed!")
     print("\nTo run full test suite with Poetry:")
-    print("  poetry run pytest tests/metrics.py -v")
+    print("  poetry run pytest tests/test_metrics.py -v")
     print("\nTo run just this smoke test:")
-    print("  poetry run python tests/metrics.py")
+    print("  poetry run python tests/test_metrics.py")

@@ -1,20 +1,26 @@
 # UncertainBird Metrics
 
-This module implements uncertain```bash
+This module implements uncertainty quantification metrics for multilabel bird sound classification, specifically focusing on calibration error metrics following the One-vs-All (OvA) decomposition approach.
+
+## Testing
+
+### Running Tests
+
+```bash
 # Run all tests
-poetry run pytest tests/metrics.py -v
+poetry run pytest tests/test_metrics.py -v
 
 # Run specific test class  
-poetry run python -m pytest tests/metrics.py::TestMultilabelECETopK -v
+poetry run python -m pytest tests/test_metrics.py::TestMultilabelECETopK -v
 
 # Run with output for paper example
-poetry run python -m pytest tests/metrics.py::TestMultilabelECETopK::test_paper_example -v -s
+poetry run python -m pytest tests/test_metrics.py::TestMultilabelECETopK::test_paper_example -v -s
 
 # Run smoke test only
-poetry run python tests/metrics.py
+poetry run python tests/test_metrics.py
 ```
 
-The metrics include comprehensive test coverage with **24 test cases** covering basic functionality, edge cases, device compatibility, realistic scenarios, and paper example validation.fication metrics for multilabel bird sound classification, specifically focusing on calibration error metrics following the One-vs-All (OvA) decomposition approach.
+The metrics include comprehensive test coverage with **24 test cases** covering basic functionality, edge cases, device compatibility, realistic scenarios, and paper example validation.
 
 ## Metrics Implemented
 
@@ -66,18 +72,6 @@ eval_complete: MetricCollection = MetricCollection({
 ```
 
 ## Testing
-
-### Running Tests
-
-```bash
-# Run full test suite
-poetry run pytest tests/metrics.py -v
-
-# Run smoke test only
-poetry run python tests/metrics.py
-```
-
-The metrics include comprehensive test coverage with 17 test cases covering basic functionality, edge cases, device compatibility, and realistic scenarios.
 
 ## Implementation Details
 
