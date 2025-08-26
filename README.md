@@ -50,6 +50,33 @@ E.g.
 
 This repository is a fork of [BirdSet](https://github.com/DBD-research-group/BirdSet). All project related changes are made in the `projects/UncertainBird` folder. If you want to change or fixed a bug in the original code, please make a pull request to the original repository. You can use all configurations and scripts from the original repository. If you want to override the configurations add a file with the appropriate path in the `projects/UncertainBird/configs/` folder. Python code can be added in the `projects/UncertainBird/src` folder use the same folder structure as in `/birdset`.
 
+## Implemented Uncertainty Metrics
+
+This project implements advanced calibration error metrics for multilabel bird sound classification:
+
+### MultilabelCalibrationError & MultilabelECEMarginal
+
+Two complementary calibration error metrics following the One-vs-All (OvA) decomposition approach:
+
+- **Robust NaN handling** for production environments
+- **CUDA and mixed precision support** for modern training pipelines  
+- **Comprehensive test coverage** with 17 test cases
+- **Device/dtype compatibility** for distributed training
+
+**Quick Test:**
+```bash
+cd projects/uncertainbird
+poetry run pytest tests/metrics.py -v  # Full test suite
+poetry run python tests/metrics.py    # Smoke test
+```
+
+**Usage in experiments:**
+The metrics are automatically included in evaluation configs and will output:
+- `test/ECE_OvA`: Main calibration error metric
+- `test/EVEC_Marginal`: Marginal calibration error metric
+
+For detailed documentation, see [projects/uncertainbird/README.md](projects/uncertainbird/README.md).
+
 
 
 

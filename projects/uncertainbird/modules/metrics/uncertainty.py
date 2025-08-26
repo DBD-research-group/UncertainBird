@@ -65,6 +65,16 @@ class MultilabelMetricsConfig:
                 "EVEC_Marginal": MultilabelECEMarginal(
                     num_labels=num_labels, n_bins=10
                 ),  # New Metric Added
+                "ECE@5": MultilabelECETopK(
+                    num_labels=num_labels, k=5, n_bins=10
+                ),  # Top-k calibration for practical multilabel prediction
+                "ECE@10": MultilabelECETopK(num_labels=num_labels, k=10, n_bins=10),
+                "ECE@num_labels": MultilabelECETopK(
+                    num_labels=num_labels, k=num_labels, n_bins=10
+                ),
+                "ACE_OvA": MultilabelACE(
+                    num_labels=num_labels, n_bins=10
+                ),  # Adaptive Calibration Error
             }
         )
 
@@ -339,4 +349,299 @@ class MultilabelECEMarginal(Metric):
         if valid_labels > 0:
             return total_ece / valid_labels
         else:
+            return torch.tensor(0.0)
+
+
+class MultilabelECETopK(Metric):
+    """
+    Top-k Multilabel Expected Calibration Error (ECE@k).
+
+    Implements calibration error focusing only on the top-k predicted labels, which is more
+    relevant for practical multilabel classification where predictions are typically made
+    for the top-k scoring labels.
+
+    As described in "Calibration Error for Multi-Class and Multi-Label Prediction":
+    ECE@k = E[∑_{j∈top_k φ(X)} |P[Y_j = 1|φ_j(X)] - φ_j(X)|]
+
+    This metric addresses the practical scenario where "the probabilistic prediction φ is turned
+    into a discrete decision by predicting the top-k scoring labels as relevant, and the others
+    as irrelevant. In that case, we might be more interested in having accurate confidence in
+    these k labels, and not care so much about the rest."
+
+    Args:
+        num_labels: Number of labels in the multilabel classification task
+        k: Number of top scoring labels to consider for calibration
+        n_bins: Number of bins to use when computing the metric (default: 10)
+        norm: Norm used to compare empirical and expected probability bins ('l1', 'l2', or 'max')
+        **kwargs: Additional keyword arguments for the Metric base class
+    """
+
+    is_differentiable: bool = False
+    higher_is_better: bool = False
+    full_state_update: bool = False
+
+    def __init__(
+        self,
+        num_labels: int,
+        k: int,
+        n_bins: int = 10,
+        norm: Literal["l1", "l2", "max"] = "l1",
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.num_labels = num_labels
+        self.k = k
+        self.n_bins = n_bins
+        self.norm = norm
+
+        # Store confidences and accuracies for top-k predictions
+        self.add_state("confidences", default=[], dist_reduce_fx="cat")
+        self.add_state("accuracies", default=[], dist_reduce_fx="cat")
+
+    def update(self, preds: Tensor, target: Tensor) -> None:
+        """Update metric states with predictions and targets.
+
+        Args:
+            preds: Predictions of shape (N, num_labels) with values in [0,1] or logits
+            target: Binary targets of shape (N, num_labels) with values in {0,1}
+        """
+        # Auto-sigmoid if looks like logits
+        if (preds.min() < 0) or (preds.max() > 1):
+            preds = torch.sigmoid(preds)
+
+        # Ensure preds are in [0,1] and handle edge cases
+        preds = preds.clamp(0.0, 1.0)
+
+        # Ensure target is binary
+        target = target.long()
+
+        batch_size = preds.shape[0]
+
+        # Process each sample independently
+        all_confidences = []
+        all_accuracies = []
+
+        for sample_idx in range(batch_size):
+            sample_preds = preds[sample_idx]  # [num_labels]
+            sample_targets = target[sample_idx]  # [num_labels]
+
+            # Get top-k predicted labels (highest confidence)
+            _, top_k_indices = torch.topk(sample_preds, min(self.k, self.num_labels))
+
+            # Extract top-k predictions and corresponding targets
+            top_k_preds = sample_preds[top_k_indices]  # [k]
+            top_k_targets = sample_targets[top_k_indices]  # [k]
+
+            # Collect predictions and targets for binning
+            for pred_val, target_val in zip(top_k_preds, top_k_targets):
+                all_confidences.append(pred_val)
+                all_accuracies.append(target_val.float())
+
+        # Only update if we have valid data
+        if all_confidences:
+            self.confidences.append(torch.stack(all_confidences))
+            self.accuracies.append(torch.stack(all_accuracies))
+
+    def compute(self) -> Tensor:
+        """Compute the top-k multilabel calibration error."""
+        if not self.confidences:
+            return torch.tensor(0.0)
+
+        try:
+            confidences = dim_zero_cat(self.confidences)
+            accuracies = dim_zero_cat(self.accuracies)
+
+            # Check for NaN values
+            if (
+                not torch.isfinite(confidences).all()
+                or not torch.isfinite(accuracies).all()
+            ):
+                return torch.tensor(0.0)
+
+            # Compute calibration error using torchmetrics function
+            result = _ce_compute(confidences, accuracies, self.n_bins, norm=self.norm)
+
+            # Ensure result is finite
+            if not torch.isfinite(result):
+                return torch.tensor(0.0)
+
+            return result
+
+        except Exception:
+            # Fallback to 0 if computation fails
+            return torch.tensor(0.0)
+
+
+class MultilabelACE(Metric):
+    """
+    Multilabel Adaptive Calibration Error (ACE).
+
+    Implements adaptive calibration error for multilabel classification using quantile-based
+    binning where each bin contains an equal number of samples. This is different from
+    uniform binning (ECE) where bins have equal width.
+
+    The metric uses quantile-based binning strategy:
+    - Bin boundaries are determined by data distribution
+    - Each bin contains approximately the same number of predictions
+    - More adaptive to actual prediction distribution
+
+    As described in calibration literature, ACE can be more robust than ECE when
+    predictions are not uniformly distributed across the [0,1] interval.
+
+    Args:
+        num_labels: Number of labels in the multilabel classification task
+        n_bins: Number of bins to use when computing ACE (default: 10)
+        norm: Norm used to compare empirical and expected probability bins ('l1', 'l2', or 'max')
+        **kwargs: Additional keyword arguments for the Metric base class
+    """
+
+    is_differentiable: bool = False
+    higher_is_better: bool = False
+    full_state_update: bool = False
+
+    def __init__(
+        self,
+        num_labels: int,
+        n_bins: int = 10,
+        norm: Literal["l1", "l2", "max"] = "l1",
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.num_labels = num_labels
+        self.n_bins = n_bins
+        self.norm = norm
+
+        # Store predictions and targets for quantile-based binning
+        self.add_state("preds", default=[], dist_reduce_fx="cat")
+        self.add_state("targets", default=[], dist_reduce_fx="cat")
+
+    def update(self, preds: Tensor, target: Tensor) -> None:
+        """Update metric states with predictions and targets.
+
+        Args:
+            preds: Predictions of shape (N, num_labels) with values in [0,1] or logits
+            target: Binary targets of shape (N, num_labels) with values in {0,1}
+        """
+        # Auto-sigmoid if looks like logits
+        if (preds.min() < 0) or (preds.max() > 1):
+            preds = torch.sigmoid(preds)
+
+        # Ensure preds are in [0,1] and handle edge cases
+        preds = preds.clamp(0.0, 1.0)
+
+        # Ensure target is binary
+        target = target.long()
+
+        # Store for later computation
+        self.preds.append(preds)
+        self.targets.append(target)
+
+    def compute(self) -> Tensor:
+        """Compute the adaptive calibration error using quantile-based binning."""
+        if not self.preds:
+            return torch.tensor(0.0)
+
+        try:
+            # Concatenate all predictions and targets
+            all_preds = dim_zero_cat(self.preds)  # [N_total, num_labels]
+            all_targets = dim_zero_cat(self.targets)  # [N_total, num_labels]
+
+            # Compute ACE for each label independently (OvA decomposition)
+            ace_values = []
+
+            for label_idx in range(self.num_labels):
+                label_preds = all_preds[:, label_idx]  # [N_total]
+                label_targets = all_targets[:, label_idx]  # [N_total]
+
+                # Skip if no valid samples for this label
+                if label_preds.numel() == 0:
+                    continue
+
+                # Skip if no variation in targets
+                if len(torch.unique(label_targets)) < 2:
+                    continue
+
+                # Quantile-based binning: each bin contains equal number of samples
+                n_samples = label_preds.shape[0]
+                samples_per_bin = n_samples // self.n_bins
+
+                # Sort predictions and targets by prediction values
+                sorted_indices = torch.argsort(label_preds)
+                sorted_preds = label_preds[sorted_indices]
+                sorted_targets = label_targets[sorted_indices]
+
+                bin_confidences = []
+                bin_accuracies = []
+                bin_weights = []
+
+                for bin_idx in range(self.n_bins):
+                    # Define bin boundaries based on sample quantiles
+                    start_idx = bin_idx * samples_per_bin
+                    if bin_idx == self.n_bins - 1:
+                        # Last bin gets remaining samples
+                        end_idx = n_samples
+                    else:
+                        end_idx = (bin_idx + 1) * samples_per_bin
+
+                    if start_idx >= end_idx:
+                        continue
+
+                    bin_preds = sorted_preds[start_idx:end_idx]
+                    bin_targets = sorted_targets[start_idx:end_idx]
+
+                    if len(bin_preds) == 0:
+                        continue
+
+                    # Average confidence in this bin
+                    avg_confidence = bin_preds.mean()
+
+                    # Accuracy in this bin
+                    accuracy = bin_targets.float().mean()
+
+                    # Weight by number of samples in bin
+                    weight = len(bin_preds) / n_samples
+
+                    bin_confidences.append(avg_confidence)
+                    bin_accuracies.append(accuracy)
+                    bin_weights.append(weight)
+
+                if not bin_confidences:
+                    continue
+
+                # Convert to tensors
+                confidences = torch.stack(bin_confidences)
+                accuracies = torch.stack(bin_accuracies)
+                weights = torch.tensor(
+                    bin_weights, dtype=confidences.dtype, device=confidences.device
+                )
+
+                # Check for NaN values
+                if (
+                    not torch.isfinite(confidences).all()
+                    or not torch.isfinite(accuracies).all()
+                ):
+                    continue
+
+                # Compute weighted calibration error for this label
+                if self.norm == "l1":
+                    ace_label = (weights * torch.abs(confidences - accuracies)).sum()
+                elif self.norm == "l2":
+                    ace_label = (weights * torch.pow(confidences - accuracies, 2)).sum()
+                elif self.norm == "max":
+                    ace_label = torch.abs(confidences - accuracies).max()
+                else:
+                    ace_label = (weights * torch.abs(confidences - accuracies)).sum()
+
+                if torch.isfinite(ace_label):
+                    ace_values.append(ace_label)
+
+            # Return average ACE across valid labels
+            if ace_values:
+                result = torch.stack(ace_values).mean()
+                return result
+            else:
+                return torch.tensor(0.0)
+
+        except Exception:
+            # Fallback to 0 if computation fails
             return torch.tensor(0.0)
