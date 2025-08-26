@@ -62,7 +62,9 @@ class MultilabelMetricsConfig:
                     thresholds=None,
                 ),
                 "ECE_OvA": MultilabelCalibrationError(num_labels=num_labels, n_bins=10),
-                # "EVEC_Marginal": MultilabelECEMarginal(num_labels=num_labels, n_bins=10),  # New Metric Added
+                "EVEC_Marginal": MultilabelECEMarginal(
+                    num_labels=num_labels, n_bins=10
+                ),  # New Metric Added
             }
         )
 
@@ -136,7 +138,13 @@ class MultilabelCalibrationError(Metric):
                 continue
 
             # Manual binning to avoid potential issues with _binary_calibration_error_update
-            edges = torch.linspace(0.0, 1.0, self.n_bins + 1, dtype=label_preds.dtype)
+            edges = torch.linspace(
+                0.0,
+                1.0,
+                self.n_bins + 1,
+                dtype=label_preds.dtype,
+                device=label_preds.device,
+            )
             bin_idx = torch.bucketize(label_preds, edges, right=False) - 1
             bin_idx = bin_idx.clamp(0, self.n_bins - 1)
 
@@ -251,8 +259,10 @@ class MultilabelECEMarginal(Metric):
             p_j = preds[:, j]  # [N]
             y_j = targets[:, j]  # [N]
 
-            # Bin the predictions
-            edges = torch.linspace(0.0, 1.0, self.n_bins + 1, dtype=p_j.dtype)
+            # Bin the predictions - ensure edges are on same device as input
+            edges = torch.linspace(
+                0.0, 1.0, self.n_bins + 1, dtype=p_j.dtype, device=p_j.device
+            )
             bin_idx = torch.bucketize(p_j, edges, right=False) - 1
             bin_idx = bin_idx.clamp(0, self.n_bins - 1)
 
@@ -261,10 +271,22 @@ class MultilabelECEMarginal(Metric):
             bin_count = getattr(self, f"bin_count_{j}")
             bin_correct = getattr(self, f"bin_correct_{j}")
 
-            # Accumulate statistics
-            bin_sum_p.index_add_(0, bin_idx, p_j)
-            bin_count.index_add_(0, bin_idx, torch.ones_like(bin_idx, dtype=torch.long))
-            bin_correct.index_add_(0, bin_idx, y_j.long())
+            # Accumulate statistics - ensure same device and dtype as state tensors
+            bin_sum_p.index_add_(
+                0,
+                bin_idx.to(bin_sum_p.device),
+                p_j.to(device=bin_sum_p.device, dtype=bin_sum_p.dtype),
+            )
+            bin_count.index_add_(
+                0,
+                bin_idx.to(bin_count.device),
+                torch.ones_like(bin_idx, dtype=bin_count.dtype).to(bin_count.device),
+            )
+            bin_correct.index_add_(
+                0,
+                bin_idx.to(bin_correct.device),
+                y_j.long().to(device=bin_correct.device, dtype=bin_correct.dtype),
+            )
 
     @torch.no_grad()
     def compute(self) -> torch.Tensor:
@@ -305,6 +327,11 @@ class MultilabelECEMarginal(Metric):
 
             # Check for NaN and skip if present
             if torch.isfinite(ece_j):
+                # Ensure total_ece is on the same device as ece_j
+                if valid_labels == 0:
+                    total_ece = torch.tensor(
+                        0.0, device=ece_j.device, dtype=ece_j.dtype
+                    )
                 total_ece += ece_j
                 valid_labels += 1
 

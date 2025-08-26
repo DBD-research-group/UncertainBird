@@ -398,6 +398,68 @@ class TestMetricComparison:
         assert ece1 <= 1.0, "ECE should not exceed 1"
         assert ece2 <= 1.0, "ECE should not exceed 1"
 
+    def test_device_compatibility(self):
+        """Test that metrics work correctly with CUDA tensors."""
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA not available, skipping device compatibility test")
+
+        device = torch.device("cuda")
+        num_labels = 3
+        n_bins = 5
+
+        metric1 = MultilabelCalibrationError(num_labels=num_labels, n_bins=n_bins)
+        metric2 = MultilabelECEMarginal(num_labels=num_labels, n_bins=n_bins)
+
+        # Test data on CUDA
+        preds = torch.rand(10, num_labels, device=device)
+        targets = torch.randint(0, 2, (10, num_labels), device=device)
+
+        # Should not raise device mismatch errors
+        metric1.update(preds, targets)
+        metric2.update(preds, targets)
+
+        ece1 = metric1.compute()
+        ece2 = metric2.compute()
+
+        # Results should be finite and reasonable
+        assert torch.isfinite(
+            ece1
+        ), "MultilabelCalibrationError should be finite on CUDA"
+        assert torch.isfinite(ece2), "MultilabelECEMarginal should be finite on CUDA"
+        assert ece1 >= 0, "MultilabelCalibrationError should be non-negative on CUDA"
+        assert ece2 >= 0, "MultilabelECEMarginal should be non-negative on CUDA"
+
+    def test_dtype_compatibility(self):
+        """Test that metrics work with different data types like float16."""
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA not available for dtype test")
+
+        device = torch.device("cuda")
+        num_labels = 2
+        n_bins = 3
+
+        metric1 = MultilabelCalibrationError(num_labels=num_labels, n_bins=n_bins)
+        metric2 = MultilabelECEMarginal(num_labels=num_labels, n_bins=n_bins)
+
+        # Test with float16 (half precision) which can cause dtype mismatches
+        preds = torch.rand(8, num_labels, dtype=torch.float16, device=device)
+        targets = torch.randint(0, 2, (8, num_labels), device=device)
+
+        # Should not raise dtype mismatch errors
+        metric1.update(preds, targets)
+        metric2.update(preds, targets)
+
+        ece1 = metric1.compute()
+        ece2 = metric2.compute()
+
+        # Results should be finite and reasonable
+        assert torch.isfinite(ece1), "MultilabelCalibrationError should handle float16"
+        assert torch.isfinite(ece2), "MultilabelECEMarginal should handle float16"
+        assert (
+            ece1 >= 0
+        ), "MultilabelCalibrationError should be non-negative with float16"
+        assert ece2 >= 0, "MultilabelECEMarginal should be non-negative with float16"
+
 
 # Test runner
 if __name__ == "__main__":
