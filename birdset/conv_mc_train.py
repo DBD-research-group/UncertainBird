@@ -74,6 +74,52 @@ def log_dropout_layers(m):
     for name, module in m.named_modules():
         if isinstance(module, (nn.Dropout, nn.Dropout2d, nn.Dropout3d, nn.AlphaDropout, nn.FeatureAlphaDropout)):
             log.info(f"[DROPOUT] {name}: {module.__class__.__name__}(p={module.p})")
+from pathlib import Path
+import os, json, torch
+from hydra.utils import to_absolute_path
+
+def safe_save_ckpt(trainer, model, cfg, filename="convnext_from_hf.ckpt"):
+    # 1) Resolve and create output dir (Hydra can change the CWD)
+    out_dir = Path(to_absolute_path(cfg.paths.output_dir))
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 2) Only rank 0 writes
+    if hasattr(trainer, "is_global_zero") and not trainer.is_global_zero:
+        return None
+
+    ckpt_path = out_dir / filename
+
+    # 3) Make sure the model is connected to the trainer (belt & suspenders)
+    try:
+        if getattr(trainer.strategy, "lightning_module", None) is None:
+            trainer.strategy.connect(model)
+    except Exception:
+        pass  # harmless if not needed
+
+    # 4) Try Lightning save first
+    try:
+        trainer.save_checkpoint(str(ckpt_path))
+        if ckpt_path.exists():
+            return str(ckpt_path)
+    except Exception as e:
+        print(f"[warn] trainer.save_checkpoint failed: {e}")
+
+    # 5) Fallback: write a Lightning-compatible checkpoint manually
+    hparams = {}
+    if hasattr(model, "hparams"):
+        # convert OmegaConf to plain dict if present
+        try:
+            from omegaconf import OmegaConf
+            hparams = OmegaConf.to_container(model.hparams, resolve=True)
+        except Exception:
+            hparams = dict(model.hparams)
+
+    manual_ckpt = {
+        "state_dict": model.state_dict(),
+        "hyper_parameters": hparams,
+    }
+    torch.save(manual_ckpt, ckpt_path)
+    return str(ckpt_path)
 
 def describe_mcd_setup(model: nn.Module, max_name_len: int = 60):
     print("\n=== MC-Dropout Setup Summary ===")
@@ -232,7 +278,7 @@ def train(cfg):
                 target,    # ConvNextForImageClassification
                 p_stem=0.0,
                 p_block=0.00,
-                p_head=0.03,
+                p_head=0.00,
             )
 
 
@@ -271,7 +317,7 @@ def train(cfg):
                 trainer=trainer,
                 base_model=best_base,                 # your LightningModule or nn.Module
                 dataloader=dl,                # or pass dataloader=...
-                T=10,
+                T=1,
                 threshold=float(cfg.get("MCTest_threshold", 0.5)),
                 task="multilabel",                    # or "multiclass"
                 num_labels=21,                        # optional; inferred if possible
@@ -341,9 +387,17 @@ def train(cfg):
 
 
     test_metrics = trainer.callback_metrics
+    # trainer.save_checkpoint("/workspace/logs/train/runs/HSN/convnext/2025-08-22_151532/callback_checkpoints/convnext_HSN_Pretrained_from_huggingface.ckpt")
 
     if cfg.get("save_state_dict"):
-        log.info(f"Saving state dicts")
+        log.info("Saving state dicts & checkpoint")
+        saved_path = safe_save_ckpt(trainer, model, cfg,
+                                    filename="convnext_HSN_Pretrained_from_hf.ckpt")
+        if saved_path:
+            log.info(f"Checkpoint saved to: {saved_path}")
+        else:
+            log.warning("Checkpoint was not saved (non-zero rank or error).")
+
         utils.save_state_dicts(
             trainer=trainer,
             model=model,

@@ -3,6 +3,9 @@ import torch
 import matplotlib
 matplotlib.use("Agg")  # headless-safe
 import matplotlib.pyplot as plt
+import pandas as pd
+import torch
+import numpy as np
 
 @torch.no_grad()
 def multilabel_reliability_details(preds: torch.Tensor, target: torch.Tensor,
@@ -159,3 +162,36 @@ def save_reliability_plot(preds, target, path_png: str, bins=10, threshold=0.5,
     plt.close()
 
     return {"ece_posrate": float(ece_posrate), "ece_precision": float(ece_precision)}
+
+
+
+def save_outputs_to_csv(probs: torch.Tensor, targets: torch.Tensor, filepath: str = "outputs.csv"):
+    """
+    Save neural network outputs (probabilities) and ground truth targets to a CSV file.
+
+    Args:
+        probs (torch.Tensor): Model outputs, shape [N, C]
+        targets (torch.Tensor): Ground truth labels, shape [N, C] (multilabel) or [N] (multiclass)
+        filepath (str): Where to save the CSV
+    """
+    # Convert to numpy
+    probs_np = probs.detach().cpu().numpy()
+    targets_np = targets.detach().cpu().numpy()
+
+    # If targets are 1D (multiclass), make them column-shaped
+    if targets_np.ndim == 1:
+        targets_np = targets_np[:, None]
+
+    # Build dataframe with column names
+    num_classes = probs_np.shape[1]
+    prob_cols = [f"prob_class_{i}" for i in range(num_classes)]
+    target_cols = [f"target_class_{i}" for i in range(targets_np.shape[1])]
+
+    df = pd.DataFrame(
+        data = np.concatenate([probs_np, targets_np], axis=1),
+        columns = prob_cols + target_cols
+    )
+
+    # Save
+    df.to_csv(filepath, index=False)
+    print(f"Saved outputs and targets to {filepath}")

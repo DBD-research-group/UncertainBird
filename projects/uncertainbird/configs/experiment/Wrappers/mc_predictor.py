@@ -6,9 +6,10 @@ import torch.nn as nn
 from lightning.pytorch import LightningModule
 from typing import Any, Dict, List, Tuple, Optional, Union
 from birdset.modules.metrics.multilabel import MultilabelECEMacro, TopKAccuracy
-from reliability import save_reliability_plot
+from reliability import save_reliability_plot, save_outputs_to_csv
 import os
-
+import pandas as pd
+import numpy as np
 # torchmetrics (only imported if we compute metrics)
 try:
     from torchmetrics.classification import (
@@ -175,7 +176,9 @@ class MCDropoutPredictor(LightningModule):
         # track how many dropout modules we see
         self._mc_drop_count: int = 0
 
-    # ---- MC mode helpers ----
+
+# ---- MC mode helpers ----
+
 
     def _activate_mc_dropout(self):
         """Enable stochastic layers regardless of Lightning’s eval() calls."""
@@ -341,7 +344,8 @@ class MCDropoutPredictor(LightningModule):
 
         probs = torch.cat(self._probs, dim=0)     # [N, C]
         targets = torch.cat(self._targets, dim=0) # [N, C] (multilabel) or [N] (multiclass)
-
+        out_csv = os.path.join(self.plot_path, "raw_out.csv")
+        save_outputs_to_csv(probs, targets, out_csv)
         out_png = os.path.join(self.plot_path, "reliability_mc.png")
         try:
             ece_plot = save_reliability_plot(

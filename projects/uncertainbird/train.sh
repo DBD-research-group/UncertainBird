@@ -18,7 +18,7 @@ if [[ "${DEBUGPY:-0}" == "1" ]]; then
 fi
 
 exec ${PYTHON_BIN} "${DEBUG_ARGS[@]}" \
-  birdset/eat_mc_train.py \
+  birdset/conv_mc_train.py \
   --config-path '../projects/uncertainbird/configs' \
   --config-dir 'configs' \
   logger=wandb_UncertainBird \
