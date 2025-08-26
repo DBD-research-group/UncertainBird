@@ -15,6 +15,73 @@ from torchmetrics.functional.classification.calibration_error import (
 from torchmetrics.utilities.data import dim_zero_cat
 
 
+def _sigmoid_and_clamp(preds: Tensor) -> Tensor:
+    """Apply sigmoid and clamp predictions to [0,1] range."""
+    # Auto-sigmoid if looks like logits
+    if (preds.min() < 0) or (preds.max() > 1):
+        preds = torch.sigmoid(preds)
+    return preds.clamp(0.0, 1.0)
+
+
+def _create_uniform_bins(preds: Tensor, n_bins: int) -> Tensor:
+    """Create uniform bin edges for calibration binning."""
+    return torch.linspace(
+        0.0,
+        1.0,
+        n_bins + 1,
+        dtype=preds.dtype,
+        device=preds.device,
+    )
+
+
+def _assign_to_bins(preds: Tensor, edges: Tensor, n_bins: int) -> Tensor:
+    """Assign predictions to bins based on edges."""
+    bin_idx = torch.bucketize(preds, edges, right=False) - 1
+    return bin_idx.clamp(0, n_bins - 1)
+
+
+def _process_bins_for_calibration(
+    preds: Tensor, targets: Tensor, n_bins: int
+) -> tuple[list[Tensor], list[Tensor]]:
+    """
+    Process predictions and targets into bins and compute confidence/accuracy pairs.
+
+    Args:
+        preds: Predictions for a single label [N]
+        targets: Targets for a single label [N]
+        n_bins: Number of bins
+
+    Returns:
+        Tuple of (confidences, accuracies) lists
+    """
+    # Create uniform bins
+    edges = _create_uniform_bins(preds, n_bins)
+    bin_idx = _assign_to_bins(preds, edges, n_bins)
+
+    # Collect confidences and accuracies for each bin
+    confidences = []
+    accuracies = []
+
+    for bin_i in range(n_bins):
+        mask = bin_idx == bin_i
+        if not mask.any():
+            continue
+
+        bin_preds = preds[mask]
+        bin_targets = targets[mask]
+
+        # Average confidence in this bin
+        avg_conf = bin_preds.mean()
+
+        # Accuracy in this bin
+        accuracy = bin_targets.float().mean()
+
+        confidences.append(avg_conf)
+        accuracies.append(accuracy)
+
+    return confidences, accuracies
+
+
 class MultilabelMetricsConfig:
     """
     A class for configuring the metrics used during model training and evaluation.
@@ -126,12 +193,8 @@ class MultilabelCalibrationError(Metric):
             preds: Predictions of shape (N, num_labels) with values in [0,1] or logits
             target: Binary targets of shape (N, num_labels) with values in {0,1}
         """
-        # Auto-sigmoid if looks like logits
-        if (preds.min() < 0) or (preds.max() > 1):
-            preds = torch.sigmoid(preds)
-
-        # Ensure preds are in [0,1] and handle edge cases
-        preds = preds.clamp(0.0, 1.0)
+        # Preprocess predictions
+        preds = _sigmoid_and_clamp(preds)
 
         # Ensure target is binary
         target = target.long()
@@ -148,37 +211,10 @@ class MultilabelCalibrationError(Metric):
             if label_preds.numel() == 0:
                 continue
 
-            # Manual binning to avoid potential issues with _binary_calibration_error_update
-            edges = torch.linspace(
-                0.0,
-                1.0,
-                self.n_bins + 1,
-                dtype=label_preds.dtype,
-                device=label_preds.device,
+            # Process bins using utility function
+            confidences, accuracies = _process_bins_for_calibration(
+                label_preds, label_targets, self.n_bins
             )
-            bin_idx = torch.bucketize(label_preds, edges, right=False) - 1
-            bin_idx = bin_idx.clamp(0, self.n_bins - 1)
-
-            # Collect confidences and accuracies for each bin
-            confidences = []
-            accuracies = []
-
-            for bin_i in range(self.n_bins):
-                mask = bin_idx == bin_i
-                if not mask.any():
-                    continue
-
-                bin_preds = label_preds[mask]
-                bin_targets = label_targets[mask]
-
-                # Average confidence in this bin
-                avg_conf = bin_preds.mean()
-
-                # Accuracy in this bin
-                accuracy = bin_targets.float().mean()
-
-                confidences.append(avg_conf)
-                accuracies.append(accuracy)
 
             if confidences:  # Only add if we have valid bins
                 all_confidences.extend(confidences)
@@ -258,11 +294,8 @@ class MultilabelECEMarginal(Metric):
             preds: [N, num_labels] probabilities or logits
             targets: [N, num_labels] binary targets {0,1}
         """
-        # Auto-sigmoid if needed
-        if (preds.min() < 0) or (preds.max() > 1):
-            preds = torch.sigmoid(preds)
-
-        preds = preds.clamp(0.0, 1.0)
+        # Preprocess predictions
+        preds = _sigmoid_and_clamp(preds)
         targets = targets.bool()
 
         # Process each label independently
@@ -270,12 +303,9 @@ class MultilabelECEMarginal(Metric):
             p_j = preds[:, j]  # [N]
             y_j = targets[:, j]  # [N]
 
-            # Bin the predictions - ensure edges are on same device as input
-            edges = torch.linspace(
-                0.0, 1.0, self.n_bins + 1, dtype=p_j.dtype, device=p_j.device
-            )
-            bin_idx = torch.bucketize(p_j, edges, right=False) - 1
-            bin_idx = bin_idx.clamp(0, self.n_bins - 1)
+            # Create uniform bins
+            edges = _create_uniform_bins(p_j, self.n_bins)
+            bin_idx = _assign_to_bins(p_j, edges, self.n_bins)
 
             # Get state tensors for this label
             bin_sum_p = getattr(self, f"bin_sum_p_{j}")
@@ -405,12 +435,8 @@ class MultilabelECETopK(Metric):
             preds: Predictions of shape (N, num_labels) with values in [0,1] or logits
             target: Binary targets of shape (N, num_labels) with values in {0,1}
         """
-        # Auto-sigmoid if looks like logits
-        if (preds.min() < 0) or (preds.max() > 1):
-            preds = torch.sigmoid(preds)
-
-        # Ensure preds are in [0,1] and handle edge cases
-        preds = preds.clamp(0.0, 1.0)
+        # Preprocess predictions
+        preds = _sigmoid_and_clamp(preds)
 
         # Ensure target is binary
         target = target.long()
@@ -448,37 +474,10 @@ class MultilabelECETopK(Metric):
                 if label_preds.numel() == 0:
                     continue
 
-                # Manual binning (same approach as ECE_OvA)
-                edges = torch.linspace(
-                    0.0,
-                    1.0,
-                    self.n_bins + 1,
-                    dtype=label_preds.dtype,
-                    device=label_preds.device,
+                # Process bins using utility function
+                confidences, accuracies = _process_bins_for_calibration(
+                    label_preds, label_targets, self.n_bins
                 )
-                bin_idx = torch.bucketize(label_preds, edges, right=False) - 1
-                bin_idx = bin_idx.clamp(0, self.n_bins - 1)
-
-                # Collect confidences and accuracies for each bin
-                confidences = []
-                accuracies = []
-
-                for bin_i in range(self.n_bins):
-                    mask = bin_idx == bin_i
-                    if not mask.any():
-                        continue
-
-                    bin_preds = label_preds[mask]
-                    bin_targets = label_targets[mask]
-
-                    # Average confidence in this bin
-                    avg_conf = bin_preds.mean()
-
-                    # Accuracy in this bin
-                    accuracy = bin_targets.float().mean()
-
-                    confidences.append(avg_conf)
-                    accuracies.append(accuracy)
 
                 if confidences:  # Only add if we have valid bins
                     all_confidences.extend(confidences)
@@ -562,12 +561,8 @@ class MultilabelACE(Metric):
             preds: Predictions of shape (N, num_labels) with values in [0,1] or logits
             target: Binary targets of shape (N, num_labels) with values in {0,1}
         """
-        # Auto-sigmoid if looks like logits
-        if (preds.min() < 0) or (preds.max() > 1):
-            preds = torch.sigmoid(preds)
-
-        # Ensure preds are in [0,1] and handle edge cases
-        preds = preds.clamp(0.0, 1.0)
+        # Preprocess predictions
+        preds = _sigmoid_and_clamp(preds)
 
         # Ensure target is binary
         target = target.long()
