@@ -55,6 +55,7 @@ class BaseModule(L.LightningModule):
         batch_size (int): The batch size for training.
         task (str): The task type, can be either 'multiclass' or 'multilabel'.
         num_gpus (int): The number of GPUs to use for training.
+        mask_logits (bool): Whether to mask logits based on pretraining information, default is True.
     """
 
     def __init__(
@@ -80,6 +81,7 @@ class BaseModule(L.LightningModule):
         task: Literal["multiclass", "multilabel"] = "multiclass",
         num_gpus: int = 1,
         pretrain_info=None,
+        mask_logits: Optional[bool] = True,
     ):
 
         super(BaseModule, self).__init__()
@@ -93,6 +95,7 @@ class BaseModule(L.LightningModule):
         self.warmup_ratio = 0.05
         self.metrics = metrics
         self.logging_params = logging_params
+        self.mask_logits = mask_logits
 
         # partial
         self.num_epochs = num_epochs
@@ -124,9 +127,14 @@ class BaseModule(L.LightningModule):
         self.test_targets = []
         self.test_preds = []
         self.class_mask = None
+        self.reverse_class_mapping = False
 
         # TODO: reimplement this
-        if self.pretrain_info and self.pretrain_info.get("hf_pretrain_name"):
+        if (
+            self.mask_logits == True
+            and self.pretrain_info
+            and self.pretrain_info.get("hf_pretrain_name")
+        ):
             print("Masking Logits")
             self.pretrain_dataset = self.pretrain_info["hf_pretrain_name"]
             self.hf_path = self.pretrain_info["hf_path"]
@@ -140,6 +148,27 @@ class BaseModule(L.LightningModule):
             self.class_mask = [
                 pretrain_classlabels.names.index(i) for i in dataset_classlabels.names
             ]
+        elif (
+            self.mask_logits == False
+            and self.pretrain_info
+            and self.pretrain_info.get("hf_pretrain_name")
+        ):
+            print("Using all Logits - creating reverse mapping for labels")
+            self.pretrain_dataset = self.pretrain_info["hf_pretrain_name"]
+            self.hf_path = self.pretrain_info["hf_path"]
+            self.hf_name = self.pretrain_info["hf_name"]
+            pretrain_classlabels = datasets.load_dataset_builder(
+                self.hf_path, self.pretrain_dataset
+            ).info.features["ebird_code"]
+            dataset_classlabels = datasets.load_dataset_builder(
+                self.hf_path, self.hf_name
+            ).info.features["ebird_code"]
+            # Create reverse mapping: expand dataset labels to match pretrain logits
+            self.class_mask = [
+                pretrain_classlabels.names.index(i) for i in dataset_classlabels.names
+            ]
+            # Store original class mapping for label expansion
+            self.reverse_class_mapping = True
 
     def forward(self, *args, **kwargs):
         return self.model.forward(*args, **kwargs)
@@ -177,9 +206,25 @@ class BaseModule(L.LightningModule):
         if self.class_mask and (
             not self.pretrain_info.valid_test_only or not self.trainer.training
         ):
-            if batch["labels"].shape == logits.shape:
-                batch["labels"] = batch["labels"][:, self.class_mask]
-            logits = logits[:, self.class_mask]
+            if self.reverse_class_mapping:
+                # Case: mask_logits = False - expand labels to match all pretrain logits
+                if batch["labels"].shape[1] != logits.shape[1]:
+                    # Create expanded labels with zeros for all pretrain classes
+                    expanded_labels = torch.zeros(
+                        batch["labels"].shape[0],
+                        logits.shape[1],
+                        dtype=batch["labels"].dtype,
+                        device=batch["labels"].device,
+                    )
+                    # Fill in the positions corresponding to current dataset classes
+                    expanded_labels[:, self.class_mask] = batch["labels"]
+                    batch["labels"] = expanded_labels
+                # Keep all logits unchanged for comparison with expanded labels
+            else:
+                # Case: mask_logits = True - mask logits to match current dataset
+                if batch["labels"].shape == logits.shape:
+                    batch["labels"] = batch["labels"][:, self.class_mask]
+                logits = logits[:, self.class_mask]
         loss = self.loss(logits, batch["labels"])
         preds = self.output_activation(logits)
         return loss, preds, batch["labels"]
