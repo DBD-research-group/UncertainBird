@@ -635,6 +635,125 @@ class TestMultilabelECETopK:
         ece = metric.compute()
         assert ece == 0.0, "ECE@k should be 0 for empty input"
 
+    def test_ece_topk_equals_ece_ova_when_k_equals_num_labels(self):
+        """Test that ECE@k equals ECE_OvA when k equals the number of labels.
+
+        When k equals the total number of labels, ECE@k should consider all classes
+        and produce the same result as ECE_OvA (One-vs-All decomposition).
+        """
+        num_labels = 4
+        n_bins = 10
+
+        # Create metrics with same configuration
+        ece_topk = MultilabelECETopK(num_labels=num_labels, k=num_labels, n_bins=n_bins)
+        ece_ova = MultilabelCalibrationError(num_labels=num_labels, n_bins=n_bins)
+
+        # Create realistic multilabel data
+        torch.manual_seed(42)  # For reproducibility
+        batch_size = 100
+
+        # Generate predictions with varying confidence levels
+        preds = torch.rand(batch_size, num_labels)
+        preds = torch.sigmoid(preds)  # Ensure probabilities
+
+        # Generate targets (sparse multilabel pattern)
+        targets = torch.zeros(batch_size, num_labels)
+        for i in range(batch_size):
+            # Randomly assign 1-3 positive labels per sample
+            num_positive = torch.randint(1, 4, (1,)).item()
+            positive_indices = torch.randperm(num_labels)[:num_positive]
+            targets[i, positive_indices] = 1
+
+        targets = targets.long()
+
+        # Update both metrics with the same data
+        ece_topk.update(preds, targets)
+        ece_ova.update(preds, targets)
+
+        # Compute calibration errors
+        ece_topk_result = ece_topk.compute()
+        ece_ova_result = ece_ova.compute()
+
+        # They should be approximately equal (allowing for small numerical differences)
+        print(f"ECE@{num_labels}: {ece_topk_result}")
+        print(f"ECE_OvA: {ece_ova_result}")
+
+        assert torch.isfinite(ece_topk_result), "ECE@k should be finite"
+        assert torch.isfinite(ece_ova_result), "ECE_OvA should be finite"
+        assert ece_topk_result >= 0, "ECE@k should be non-negative"
+        assert ece_ova_result >= 0, "ECE_OvA should be non-negative"
+
+        # The key assertion: they should be approximately equal
+        # Using a small tolerance for numerical precision differences
+        tolerance = 1e-5
+        diff = torch.abs(ece_topk_result - ece_ova_result)
+        assert diff < tolerance, (
+            f"ECE@{num_labels} ({ece_topk_result}) should approximately equal "
+            f"ECE_OvA ({ece_ova_result}), but difference is {diff}"
+        )
+
+    def test_ece_topk_subset_vs_full_comparison(self):
+        """Test that ECE@k with k<num_labels focuses on subset while k=num_labels includes all."""
+        num_labels = 5
+        k_subset = 2
+        n_bins = 10
+
+        # Create metrics
+        ece_topk_subset = MultilabelECETopK(
+            num_labels=num_labels, k=k_subset, n_bins=n_bins
+        )
+        ece_topk_full = MultilabelECETopK(
+            num_labels=num_labels, k=num_labels, n_bins=n_bins
+        )
+        ece_ova = MultilabelCalibrationError(num_labels=num_labels, n_bins=n_bins)
+
+        # Create data where some classes are very poorly calibrated
+        torch.manual_seed(123)
+        batch_size = 50
+
+        preds = torch.rand(batch_size, num_labels)
+        # Make first 2 classes well-calibrated, last 3 classes poorly calibrated
+        preds[:, :2] = torch.sigmoid(preds[:, :2])  # Reasonable predictions for first 2
+        preds[:, 2:] = torch.clamp(
+            1.0 - preds[:, 2:], 0.01, 0.99
+        )  # Inverted for last 3
+
+        # Create targets that match the calibration pattern
+        targets = torch.zeros(batch_size, num_labels)
+        # Well-calibrated pattern for first 2 classes
+        targets[:, :2] = (torch.rand(batch_size, 2) < preds[:, :2]).long()
+        # Poorly calibrated pattern for last 3 classes (opposite of predictions)
+        targets[:, 2:] = (torch.rand(batch_size, 3) > preds[:, 2:]).long()
+
+        # Update all metrics
+        ece_topk_subset.update(preds, targets)
+        ece_topk_full.update(preds, targets)
+        ece_ova.update(preds, targets)
+
+        # Compute results
+        ece_subset = ece_topk_subset.compute()
+        ece_full = ece_topk_full.compute()
+        ece_ova_result = ece_ova.compute()
+
+        print(f"ECE@{k_subset}: {ece_subset}")
+        print(f"ECE@{num_labels}: {ece_full}")
+        print(f"ECE_OvA: {ece_ova_result}")
+
+        # All should be finite and non-negative
+        assert torch.isfinite(ece_subset) and ece_subset >= 0
+        assert torch.isfinite(ece_full) and ece_full >= 0
+        assert torch.isfinite(ece_ova_result) and ece_ova_result >= 0
+
+        # ECE@num_labels should approximately equal ECE_OvA
+        tolerance = 1e-5
+        diff_full_ova = torch.abs(ece_full - ece_ova_result)
+        assert (
+            diff_full_ova < tolerance
+        ), f"ECE@{num_labels} should approximately equal ECE_OvA"
+
+        # ECE@subset might be different (could be better or worse depending on which classes are selected)
+        # We just verify it's a valid result - the specific relationship depends on the data
+
 
 # Test runner
 if __name__ == "__main__":

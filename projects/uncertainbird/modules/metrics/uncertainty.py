@@ -1,3 +1,4 @@
+import logging
 import torch
 from torch import Tensor
 from torchmetrics import Metric, MetricCollection, MaxMetric
@@ -62,7 +63,7 @@ class MultilabelMetricsConfig:
                     thresholds=None,
                 ),
                 "ECE_OvA": MultilabelCalibrationError(num_labels=num_labels, n_bins=10),
-                "EVEC_Marginal": MultilabelECEMarginal(
+                "ECE_Marginal": MultilabelECEMarginal(
                     num_labels=num_labels, n_bins=10
                 ),  # New Metric Added
                 "ECE@5": MultilabelECETopK(
@@ -356,21 +357,20 @@ class MultilabelECETopK(Metric):
     """
     Top-k Multilabel Expected Calibration Error (ECE@k).
 
-    Implements calibration error focusing only on the top-k predicted labels, which is more
-    relevant for practical multilabel classification where predictions are typically made
-    for the top-k scoring labels.
+    Implements calibration error focusing only on the top-k most frequently predicted classes
+    across the entire dataset. This is more relevant for practical multilabel classification
+    where we want to assess calibration for the most relevant/active labels.
 
-    As described in "Calibration Error for Multi-Class and Multi-Label Prediction":
-    ECE@k = E[∑_{j∈top_k φ(X)} |P[Y_j = 1|φ_j(X)] - φ_j(X)|]
+    The metric:
+    1. Identifies the top-k classes with highest average prediction scores across all samples
+    2. Computes calibration error using all samples but only for these top-k classes
 
-    This metric addresses the practical scenario where "the probabilistic prediction φ is turned
-    into a discrete decision by predicting the top-k scoring labels as relevant, and the others
-    as irrelevant. In that case, we might be more interested in having accurate confidence in
-    these k labels, and not care so much about the rest."
+    This addresses the practical scenario where we care most about calibration for the classes
+    that the model predicts most frequently or with highest confidence.
 
     Args:
         num_labels: Number of labels in the multilabel classification task
-        k: Number of top scoring labels to consider for calibration
+        k: Number of top scoring classes to consider for calibration
         n_bins: Number of bins to use when computing the metric (default: 10)
         norm: Norm used to compare empirical and expected probability bins ('l1', 'l2', or 'max')
         **kwargs: Additional keyword arguments for the Metric base class
@@ -415,32 +415,10 @@ class MultilabelECETopK(Metric):
         # Ensure target is binary
         target = target.long()
 
-        batch_size = preds.shape[0]
-
-        # Process each sample independently
-        all_confidences = []
-        all_accuracies = []
-
-        for sample_idx in range(batch_size):
-            sample_preds = preds[sample_idx]  # [num_labels]
-            sample_targets = target[sample_idx]  # [num_labels]
-
-            # Get top-k predicted labels (highest confidence)
-            _, top_k_indices = torch.topk(sample_preds, min(self.k, self.num_labels))
-
-            # Extract top-k predictions and corresponding targets
-            top_k_preds = sample_preds[top_k_indices]  # [k]
-            top_k_targets = sample_targets[top_k_indices]  # [k]
-
-            # Collect predictions and targets for binning
-            for pred_val, target_val in zip(top_k_preds, top_k_targets):
-                all_confidences.append(pred_val)
-                all_accuracies.append(target_val.float())
-
-        # Only update if we have valid data
-        if all_confidences:
-            self.confidences.append(torch.stack(all_confidences))
-            self.accuracies.append(torch.stack(all_accuracies))
+        # Store all predictions and targets for later processing
+        # We'll determine top-k classes globally across all samples
+        self.confidences.append(preds)
+        self.accuracies.append(target)
 
     def compute(self) -> Tensor:
         """Compute the top-k multilabel calibration error."""
@@ -448,8 +426,69 @@ class MultilabelECETopK(Metric):
             return torch.tensor(0.0)
 
         try:
-            confidences = dim_zero_cat(self.confidences)
-            accuracies = dim_zero_cat(self.accuracies)
+            # Concatenate all predictions and targets
+            all_preds = dim_zero_cat(self.confidences)  # [N_total, num_labels]
+            all_targets = dim_zero_cat(self.accuracies)  # [N_total, num_labels]
+
+            # Find top-k classes by highest single prediction scores across all samples
+            max_preds_per_class = all_preds.max(dim=0)[0]  # [num_labels]
+            _, top_k_class_indices = torch.topk(
+                max_preds_per_class, min(self.k, self.num_labels)
+            )
+
+            # Process each selected label independently (same binning approach as ECE_OvA)
+            all_confidences = []
+            all_accuracies = []
+
+            for class_idx in top_k_class_indices:
+                label_preds = all_preds[:, class_idx]  # [N_total]
+                label_targets = all_targets[:, class_idx]  # [N_total]
+
+                # Skip if no valid samples for this label
+                if label_preds.numel() == 0:
+                    continue
+
+                # Manual binning (same approach as ECE_OvA)
+                edges = torch.linspace(
+                    0.0,
+                    1.0,
+                    self.n_bins + 1,
+                    dtype=label_preds.dtype,
+                    device=label_preds.device,
+                )
+                bin_idx = torch.bucketize(label_preds, edges, right=False) - 1
+                bin_idx = bin_idx.clamp(0, self.n_bins - 1)
+
+                # Collect confidences and accuracies for each bin
+                confidences = []
+                accuracies = []
+
+                for bin_i in range(self.n_bins):
+                    mask = bin_idx == bin_i
+                    if not mask.any():
+                        continue
+
+                    bin_preds = label_preds[mask]
+                    bin_targets = label_targets[mask]
+
+                    # Average confidence in this bin
+                    avg_conf = bin_preds.mean()
+
+                    # Accuracy in this bin
+                    accuracy = bin_targets.float().mean()
+
+                    confidences.append(avg_conf)
+                    accuracies.append(accuracy)
+
+                if confidences:  # Only add if we have valid bins
+                    all_confidences.extend(confidences)
+                    all_accuracies.extend(accuracies)
+
+            if not all_confidences:
+                return torch.tensor(0.0)
+
+            confidences = torch.stack(all_confidences)
+            accuracies = torch.stack(all_accuracies)
 
             # Check for NaN values
             if (
@@ -469,6 +508,7 @@ class MultilabelECETopK(Metric):
 
         except Exception:
             # Fallback to 0 if computation fails
+            logging.exception("Error computing MultilabelECETopK", Exception)
             return torch.tensor(0.0)
 
 
