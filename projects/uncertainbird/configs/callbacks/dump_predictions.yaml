@@ -1,0 +1,10 @@
+# @package _global_
+
+# Configuration for DumpPredictionsCallback
+callbacks:
+  dump_predictions:
+    _target_: projects.uncertainbird.callbacks.DumpPredictionsCallback
+    save_dir: "${paths.output_dir}/predictions"
+    filename_prefix: "test_predictions"
+    save_format: "pickle"  # Options: "pickle", "numpy"
+    save_logits: true  # Set to false to save predictions after output activation

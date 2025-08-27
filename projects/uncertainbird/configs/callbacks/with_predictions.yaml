@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+  - learning_rate_monitor.yaml
+  - time_tracking.yaml
+  - model_summary.yaml
+  - rich_progress_bar.yaml
+  - model_checkpoint.yaml
+  - dump_predictions.yaml  # Add the dump predictions callback
