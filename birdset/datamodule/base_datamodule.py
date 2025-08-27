@@ -73,7 +73,10 @@ class BaseDataModuleHF(L.LightningDataModule):
 
     @property
     def num_classes(self):
-        if self.dataset_config.num_classes is not None:
+        if (
+            hasattr(self.dataset_config, "num_classes")
+            and self.dataset_config.num_classes is not None
+        ):
             return self.dataset_config.num_classes
         else:
             return len(
