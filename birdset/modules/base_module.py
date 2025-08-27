@@ -201,7 +201,7 @@ class BaseModule(L.LightningModule):
 
         return {"optimizer": self.optimizer}
 
-    def model_step(self, batch, batch_idx):
+    def model_step(self, batch, batch_idx, return_logits=False):
         logits = self.forward(**batch)
         if self.class_mask and (
             not self.pretrain_info.valid_test_only or not self.trainer.training
@@ -227,6 +227,8 @@ class BaseModule(L.LightningModule):
                 logits = logits[:, self.class_mask]
         loss = self.loss(logits, batch["labels"])
         preds = self.output_activation(logits)
+        if return_logits:
+            return loss, preds, batch["labels"], logits
         return loss, preds, batch["labels"]
 
     def on_train_start(self):
