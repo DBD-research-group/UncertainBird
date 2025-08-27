@@ -73,13 +73,19 @@ class BaseDataModuleHF(L.LightningDataModule):
 
     @property
     def num_classes(self):
-        return len(
-            datasets.load_dataset_builder(
-                self.dataset_config.hf_path, self.dataset_config.hf_name
+        if (
+            hasattr(self.dataset_config, "num_classes")
+            and self.dataset_config.num_classes is not None
+        ):
+            return self.dataset_config.num_classes
+        else:
+            return len(
+                datasets.load_dataset_builder(
+                    self.dataset_config.hf_path, self.dataset_config.hf_name
+                )
+                .info.features["ebird_code"]
+                .names
             )
-            .info.features["ebird_code"]
-            .names
-        )
 
     def prepare_data(self):
         """

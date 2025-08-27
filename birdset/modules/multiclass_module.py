@@ -41,6 +41,7 @@ class MulticlassModule(BaseModule):
         task: Literal["multiclass", "multilabel"] = "multiclass",
         num_gpus: int = 1,
         prediction_table: bool = False,
+        mask_logits: bool = True,
     ):
 
         self.prediction_table = prediction_table
@@ -58,4 +59,5 @@ class MulticlassModule(BaseModule):
             task=task,
             batch_size=batch_size,
             num_gpus=num_gpus,
+            mask_logits=mask_logits,
         )
