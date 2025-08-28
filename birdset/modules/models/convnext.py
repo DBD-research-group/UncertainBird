@@ -66,7 +66,7 @@ class ConvNextClassifier(nn.Module):
 
         if self.checkpoint:
             if self.local_checkpoint:
-                state_dict = torch.load(self.local_checkpoint)["state_dict"]
+                state_dict = torch.load(self.local_checkpoint, weights_only=False)["state_dict"]
 
                 # Update this part to handle the necessary key replacements
                 adjusted_state_dict = {}
