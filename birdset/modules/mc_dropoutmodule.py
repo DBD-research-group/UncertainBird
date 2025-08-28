@@ -14,7 +14,7 @@ from birdset.configs import (
     MultilabelMetricsConfig,
     LoggingParamsConfig,
 )
-
+from projects.uncertainbird.configs.experiment.Wrappers.convnext_dropout_hooks import attach_convnext_hooks, describe_convnext_setup, set_convnext_mc_mode
 
 class MCDropoutModule(MultilabelModule):
     """
@@ -45,6 +45,7 @@ class MCDropoutModule(MultilabelModule):
         prediction_table: bool = False,
         pretrain_info=None,
         mask_logits: bool = True,
+        
     ):
 
         self.prediction_table = prediction_table
@@ -64,10 +65,25 @@ class MCDropoutModule(MultilabelModule):
             num_gpus=num_gpus,
             pretrain_info=pretrain_info,
             mask_logits=mask_logits,
+            
         )
+    def _resolve_hf_convnext(self):
+        m = self.model
+        # case 1: already the HF model
+        if hasattr(m, "convnext"):
+            return m
+        # case 2: wrapper with .model -> HF
+        inner = getattr(m, "model", None)
+        if inner is not None and hasattr(inner, "convnext"):
+            return inner
+        # fallback: search children
+        for mod in m.modules():
+            if hasattr(mod, "convnext"):
+                return mod
+        raise RuntimeError("Could not find HF ConvNext model (no .convnext found)")
     def test_step(self, batch, batch_idx):
 
-        T = getattr(self, "T", 3) 
+        T = getattr(self, "T", 10) 
         logits_list, loss_list = [], []
         for i in range (T):
 
@@ -106,7 +122,6 @@ class MCDropoutModule(MultilabelModule):
             self.test_metric,
             **asdict(self.logging_params),
         )
-
         self.test_add_metrics(preds, targets.int())
         self.log_dict(self.test_add_metrics, **asdict(self.logging_params))
 
@@ -114,5 +129,21 @@ class MCDropoutModule(MultilabelModule):
 
 
     def on_test_epoch_start(self):
-        self.model.eval()
+        self.T =10
+        hf = self._resolve_hf_convnext()
+        self.p_stem = 0.0
+        self.p_block = 0.0
+        self.p_head = 0.1
+        self.use_hooks= True
+        self.print("starting test epoch")
+        
+        attach_convnext_hooks(hf,
+                                      p_stem=self.p_stem,
+                                      p_block=self.p_block,
+                                      p_head=self.p_head)
+        set_convnext_mc_mode(hf, enabled=(self.T > 1 and self.use_hooks))
+        self.print(f"[MC] hooks {'ENABLED' if (self.T > 1 and self.use_hooks) else 'disabled'} (T={self.T})")
+
+        describe_convnext_setup(hf)
+        
         return super().on_test_epoch_start()

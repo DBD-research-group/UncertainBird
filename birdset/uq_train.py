@@ -21,8 +21,6 @@ WRAPPER_DIR = WORKSPACE / "projects" / "uncertainbird" / "configs" / "experiment
 sys.path.insert(0, str(WRAPPER_DIR))
 
 # Now import your class/function
-from eat_dropout_hooks import attach_eat_dropout_hooks_fine, set_eat_mc_mode
-from convnext_dropout_hooks import attach_convnext_eat_hooks, set_convnext_eat_mc_mode, describe_convnext_eat_setup
 
 from mc_predictor import mc_predict
 from mc_Dropout import predict_withmc
