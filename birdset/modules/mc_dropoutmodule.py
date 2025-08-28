@@ -67,25 +67,34 @@ class MCDropoutModule(MultilabelModule):
         )
     def test_step(self, batch, batch_idx):
 
-        testlossdict= []
-        predsdict = []
-        targetdict= []
-        logitsdict= []
-        for i in range (1):
+        T = getattr(self, "T", 3) 
+        logits_list, loss_list = [], []
+        for i in range (T):
 
-            test_loss, preds, targets, logits = self.model_step(batch, batch_idx, return_logits=True)
-            testlossdict.append(test_loss.detach().cpu())
-            predsdict.append(preds.detach().cpu())
-            targetdict.append(targets.detach().cpu())
-            logitsdict.append(logits.detach().cpu())
+            loss, preds, targets, logits = self.model_step(batch, batch_idx, return_logits=True)
+            logits_list.append(logits)        # [B, C] logits for this pass
+            loss_list.append(loss)            # scalar (tensor)
+            targets_ref = targets 
+
+        logits_T   = torch.stack(logits_list, dim=0)
+        logit_mean = logits_T.mean(dim=0)                     # [B, C]
+        logit_var  = logits_T.var(dim=0, unbiased=False)
+
+        
+        p_mean = torch.sigmoid(logit_mean)                # [B, C]
+        probs_T = torch.sigmoid(logits_T)   
+        loss_mc   = torch.stack(loss_list).mean()              # [T, B, C]
+        p_var  = probs_T.var(dim=0, unbiased=False)       # [B, C]
+        y_hat  = (p_mean > getattr(self, "threshold", 0.5)).int()
+
 
         # save targets and predictions for test_epoch_end
-        self.test_targets.append(targets.detach().cpu())
-        self.test_preds.append(preds.detach().cpu())
+        self.test_targets.append(targets_ref.detach().cpu())
+        self.test_preds.append(p_mean.detach().cpu())
 
         self.log(
             f"test/{self.loss.__class__.__name__}",
-            test_loss,
+            loss_mc,
             on_step=False,
             on_epoch=True,
             prog_bar=True,
@@ -101,5 +110,9 @@ class MCDropoutModule(MultilabelModule):
         self.test_add_metrics(preds, targets.int())
         self.log_dict(self.test_add_metrics, **asdict(self.logging_params))
 
-        return {"loss": test_loss, "preds": preds, "targets": targets}
-    
+        return {"loss": loss_mc, "preds": preds, "targets": targets}
+
+
+    def on_test_epoch_start(self):
+        self.model.eval()
+        return super().on_test_epoch_start()
