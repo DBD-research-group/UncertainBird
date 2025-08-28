@@ -7,4 +7,4 @@ callbacks:
     save_dir: "${paths.output_dir}/predictions"
     filename_prefix: "test_predictions"
     save_format: "pickle"  # Options: "pickle", "numpy"
-    save_logits: true  # Set to false to save predictions after output activation
+

@@ -36,7 +36,9 @@ def _create_uniform_bins(preds: Tensor, n_bins: int) -> Tensor:
 
 def _assign_to_bins(preds: Tensor, edges: Tensor, n_bins: int) -> Tensor:
     """Assign predictions to bins based on edges."""
-    bin_idx = torch.bucketize(preds, edges, right=False) - 1
+    # Ensure tensor is contiguous to avoid performance warning in torch.bucketize
+    preds_contiguous = preds.contiguous()
+    bin_idx = torch.bucketize(preds_contiguous, edges, right=False) - 1
     return bin_idx.clamp(0, n_bins - 1)
 
 

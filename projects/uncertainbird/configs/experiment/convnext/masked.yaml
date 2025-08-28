@@ -51,4 +51,3 @@ callbacks:
     save_dir: "${paths.output_dir}/predictions"
     filename_prefix: "masked_test_predictions"
     save_format: "pickle"
-    save_logits: true
