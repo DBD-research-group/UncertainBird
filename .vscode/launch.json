@@ -1,12 +1,16 @@
 {
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "Attach to debugpy (5678)",
-      "type": "python",
-      "request": "attach",
-      "connect": { "host": "localhost", "port": 5678 }
-    }
-  ]
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "UncertainBird",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "birdset/train.py --config-path '../projects/uncertainbird/configs' --config-dir 'configs' 'logger=wandb_UncertainBird' ",
+            "console": "integratedTerminal",
+            "args": "${command:pickArgs}"
+        }
+    ]
 }
-
