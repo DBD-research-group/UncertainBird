@@ -5,6 +5,8 @@ from typing import List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from collections import Counter
+
 
 def _add_tag(m: nn.Module, tag: str):
     tags = getattr(m, "_mcd_tags", [])
@@ -32,11 +34,11 @@ def _is_taggregate(obj: object) -> bool:
 def attach_eat_dropout_hooks_fine(
     model: nn.Module,
     *,
-    p_conv_res: float = 0.1,   # after every Conv1d in ResBlock1dTF
-    p_conv_down: float = 0.05, # after Conv1d in each Down
-    p_project: float = 0.1,    # after project Conv1d
+    p_conv_res: float = 0.0,   # after every Conv1d in ResBlock1dTF
+    p_conv_down: float = 0.00, # after Conv1d in each Down
+    p_project: float = 0.0,    # after project Conv1d
     p_token: float = 0.0,      # token dropout before TransformerEncoder
-    p_head: float = 0.5        # dropout before tf.fc
+    p_head: float = 0.0        # dropout before tf.fc
 ) -> List[torch.utils.hooks.RemovableHandle]:
     handles: List[torch.utils.hooks.RemovableHandle] = []
     mc_flag = {"on": False}
@@ -116,3 +118,51 @@ def set_eat_mc_mode(model: nn.Module, enabled: bool = True, freeze_batchnorm: bo
         for m in model.modules():
             if isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
                 m.eval()
+
+
+def describe_eat_setup(model: nn.Module, max_len: int = 72) -> None:
+    """
+    Pretty-print what EAT-style dropout hooks were attached.
+    Looks for:
+      - model._eat_mc_flag["on"]          (enable/disable state)
+      - model._mcd_handles                (list of RemovableHandle)
+      - submodule._mcd_tags               (list of string tags added by _add_tag)
+    """
+    enabled = None
+    flag = getattr(model, "_eat_mc_flag", None)
+    if isinstance(flag, dict):
+        enabled = flag.get("on", None)
+
+    handles = getattr(model, "_mcd_handles", [])
+    print("\n=== EAT MC hooks ===")
+    print(f"enabled: {enabled}")
+    print(f"#handles: {len(handles)}")
+
+    # collect tagged modules
+    rows = []
+    kinds = []
+    for name, m in model.named_modules():
+        tags = getattr(m, "_mcd_tags", None)
+        if not tags:
+            continue
+        for tag in tags:
+            # tag examples from your code:
+            #  "HOOK Dropout1d(p=0.1) @ ResBlock1dTF.block_t"
+            #  "PRE-HOOK TokenDropout(p=0.0)"
+            kind = "pre" if tag.startswith("PRE-HOOK") else "post"
+            kinds.append(kind)
+            t = tag if len(tag) <= max_len else "…" + tag[-(max_len-1):]
+            rows.append((name, t, kind))
+
+    if not rows:
+        print("(no tagged hook locations found)")
+    else:
+        # summary
+        c = Counter(kinds)
+        if c:
+            print("summary:", ", ".join(f"{k}={v}" for k, v in c.items()))
+        # detailed list
+        for name, tag, kind in rows:
+            print(f"{name:<{max_len}} :: kind={kind}  {tag}")
+
+    print("=== end ===\n")

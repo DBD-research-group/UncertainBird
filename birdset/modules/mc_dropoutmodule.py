@@ -8,13 +8,14 @@ from torch.optim import AdamW, Optimizer
 from functools import partial
 
 from .multilabel_module import MultilabelModule
+from projects.uncertainbird.configs.experiment.Wrappers.resolve_models import resolve_soundnet_eat
 from birdset.configs import (
     NetworkConfig,
     LRSchedulerConfig,
     MultilabelMetricsConfig,
     LoggingParamsConfig,
 )
-from projects.uncertainbird.configs.experiment.Wrappers.convnext_dropout_hooks import attach_convnext_hooks, describe_convnext_setup, set_convnext_mc_mode
+from projects.uncertainbird.configs.experiment.Wrappers.eat_dropout_hooks import attach_eat_dropout_hooks_fine, set_eat_mc_mode, describe_eat_setup
 
 class MCDropoutModule(MultilabelModule):
     """
@@ -130,20 +131,21 @@ class MCDropoutModule(MultilabelModule):
 
     def on_test_epoch_start(self):
         self.T =10
-        hf = self._resolve_hf_convnext()
-        self.p_stem = 0.0
-        self.p_block = 0.0
-        self.p_head = 0.1
+        hf = resolve_soundnet_eat(self.model)
+        self.p_conv_res = 0.0
+        self.p_conv_down = 0.00
+        self.p_project = 0.0
+        self.p_token = 0.0
+        self.p_head = 0.04
         self.use_hooks= True
+
+
         self.print("starting test epoch")
         
-        attach_convnext_hooks(hf,
-                                      p_stem=self.p_stem,
-                                      p_block=self.p_block,
-                                      p_head=self.p_head)
-        set_convnext_mc_mode(hf, enabled=(self.T > 1 and self.use_hooks))
-        self.print(f"[MC] hooks {'ENABLED' if (self.T > 1 and self.use_hooks) else 'disabled'} (T={self.T})")
+        attach_eat_dropout_hooks_fine(hf,p_conv_res=self.p_conv_res, p_conv_down=self.p_conv_down, p_project=self.p_project, p_token=self.p_token,p_head=self.p_head)
+        set_eat_mc_mode(hf, enabled=(self.T > 1 and self.use_hooks))
+        # self.print(f"[MC] hooks {'ENABLED' if (self.T > 1 and self.use_hooks) else 'disabled'} (T={self.T})")
 
-        describe_convnext_setup(hf)
+        describe_eat_setup(hf)
         
         return super().on_test_epoch_start()
