@@ -169,6 +169,7 @@ class SoundNet(nn.Module):
         local_checkpoint: str | None = None,
         pretrain_info=None,
         device: str = "cuda:0",
+        **kwargs
     ):
         super().__init__()
         self.device = device

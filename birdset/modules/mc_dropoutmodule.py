@@ -132,11 +132,11 @@ class MCDropoutModule(MultilabelModule):
     def on_test_epoch_start(self):
         self.T =10
         hf = resolve_soundnet_eat(self.model)
-        self.p_conv_res = 0.0
-        self.p_conv_down = 0.00
-        self.p_project = 0.0
-        self.p_token = 0.0
-        self.p_head = 0.04
+        self.p_conv_res = 0.05
+        self.p_conv_down = 0.05
+        self.p_project = 0.05
+        self.p_token = 0.05
+        self.p_head = 0.05
         self.use_hooks= True
 
 
