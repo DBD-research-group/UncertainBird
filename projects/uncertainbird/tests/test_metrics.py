@@ -1,6 +1,6 @@
 import pytest
 import torch
-from uncertainbird.modules.metrics.uncertainty import multilabel_calibration_error
+from uncertainbird.modules.metrics.uncertainty import compute_calibration_error
 from uncertainbird.utils.plotting import _bin_stats
 
 
@@ -22,23 +22,23 @@ class TestMultilabelCalibrationError:
                 [1, 0, 0],
             ]
         )
-        l1 = multilabel_calibration_error(
-            preds, target, num_labels=3, n_bins=3, norm="l1"
+        l1 = compute_calibration_error(
+            preds, target, n_bins=3, norm="l1", type="marginal"
         )
         print("Torch Metrics implementation ECE: ", l1)
         bin_confs, bin_accs, bin_weights, ece, mce = _bin_stats(
             preds, target, n_bins=3, quantile=False
         )
         print("XMLC ECE: ", ece)
-        l2 = multilabel_calibration_error(
-            preds, target, num_labels=3, n_bins=3, norm="l2"
+        l2 = compute_calibration_error(
+            preds, target, n_bins=3, norm="l2", type="marginal"
         )
-        max_ = multilabel_calibration_error(
-            preds, target, num_labels=3, n_bins=3, norm="max"
+        max_ = compute_calibration_error(
+            preds, target, n_bins=3, norm="max", type="marginal"
         )
-        assert torch.isclose(l1, torch.tensor(0.2222), atol=1e-4)
-        assert torch.isclose(l2, torch.tensor(0.1235), atol=1e-4)
-        assert torch.isclose(max_, torch.tensor(0.3333), atol=1e-4)
+        assert torch.isclose(l1, torch.tensor(0.1917), atol=1e-4)
+        assert torch.isclose(l2, torch.tensor(0.2075), atol=1e-4)
+        assert torch.isclose(max_, torch.tensor(0.550), atol=1e-4)
 
     def test_ece_perfect_calibration(self):
         # All predictions match targets exactly, ECE should be 0
@@ -56,9 +56,7 @@ class TestMultilabelCalibrationError:
                 [1, 1, 0],
             ]
         )
-        ece = multilabel_calibration_error(
-            preds, target, num_labels=3, n_bins=2, norm="l1"
-        )
+        ece = compute_calibration_error(preds, target, n_bins=2, norm="l1")
         print("ECE for perfectly calibrated predictions: ", ece)
         bin_confs, bin_accs, bin_weights, ece, mce = _bin_stats(
             preds, target, n_bins=2, quantile=False
@@ -76,9 +74,7 @@ class TestMultilabelCalibrationError:
             ]
         )
         target = 1 - preds.int()
-        ece = multilabel_calibration_error(
-            preds, target, num_labels=3, n_bins=2, norm="l1"
-        )
+        ece = compute_calibration_error(preds, target, n_bins=2, norm="l1")
         print("ECE for worst calibrated predictions: ", ece)
         bin_confs, bin_accs, bin_weights, ece, mce = _bin_stats(
             preds, target, n_bins=2, quantile=False

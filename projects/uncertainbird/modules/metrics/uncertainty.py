@@ -3,22 +3,13 @@ import torch
 from torch import Tensor
 from torchmetrics import Metric, MetricCollection, MaxMetric
 from torchmetrics.classification import AUROC
+from uncertainbird.utils.plotting import _bin_stats_torch
 
 from birdset.modules.metrics.multilabel import mAP, cmAP, cmAP5, pcmAP, TopKAccuracy
 
 from typing import Any, List, Literal, Optional, Sequence, Tuple, Union
 
-from torchmetrics.functional.classification.calibration_error import (
-    _binary_calibration_error_update,
-    _ce_compute,
-)
-from torchmetrics.utilities.data import dim_zero_cat
 from torchmetrics.utilities.plot import _AX_TYPE, _PLOT_OUT_TYPE
-
-from torchmetrics.functional.classification.confusion_matrix import (
-    _multilabel_confusion_matrix_tensor_validation,
-    _multilabel_confusion_matrix_format,
-)
 
 
 class MultilabelMetricsConfig:
@@ -87,318 +78,228 @@ class MultilabelMetricsConfig:
 
 
 class MultilabelCalibrationError(Metric):
-    r"""`Top-label Calibration Error`_ for multilabel tasks.
+    """
+    Computes the Expected Calibration Error (ECE) for multilabel classification.
 
-    The expected calibration error can be used to quantify how well a given model is calibrated e.g. how well the
-    predicted output probabilities of the model matches the actual probabilities of the ground truth distribution.
-    Three different norms are implemented, each corresponding to variations on the calibration error metric.
-
-    .. math::
-        \text{ECE} = \sum_i^N b_i \|(p_i - c_i)\|, \text{L1 norm (Expected Calibration Error)}
-
-    .. math::
-        \text{MCE} =  \max_{i} (p_i - c_i), \text{Infinity norm (Maximum Calibration Error)}
-
-    .. math::
-        \text{RMSCE} = \sqrt{\sum_i^N b_i(p_i - c_i)^2}, \text{L2 norm (Root Mean Square Calibration Error)}
-
-    Where :math:`p_i` is the top-1 prediction accuracy in bin :math:`i`, :math:`c_i` is the average confidence of
-    predictions in bin :math:`i`, and :math:`b_i` is the fraction of data points in bin :math:`i`. Bins are constructed
-    in an uniform way in the [0,1] range.
-
-    As input to ``forward`` and ``update`` the metric accepts the following input:
-
-    - ``preds`` (:class:`~torch.Tensor`): A float tensor of shape ``(N, C, ...)`` containing probabilities or logits for
-      each observation. If preds has values outside [0,1] range we consider the input to be logits and will auto apply
-      softmax per sample.
-    - ``target`` (:class:`~torch.Tensor`): An int tensor of shape ``(N, ...)`` containing ground truth labels, and
-      therefore only contain values in the [0, n_classes-1] range (except if `ignore_index` is specified).
-
-    .. tip::
-       Additional dimension ``...`` will be flattened into the batch dimension.
-
-    As output to ``forward`` and ``compute`` the metric returns the following output:
-
-    - ``mcce`` (:class:`~torch.Tensor`): A scalar tensor containing the calibration error
+    This metric calculates the ECE by treating all predictions as a single pool (flattened).
+    It supports different norms for measuring calibration error: L1, L2, and Max.
 
     Args:
-        num_labels: Integer specifying the number of classes
-        n_bins: Number of bins to use when computing the metric.
-        norm: Norm used to compare empirical and expected probability bins.
-        ignore_index:
-            Specifies a target value that is ignored and does not contribute to the metric calculation
-        validate_args: bool indicating if input arguments and tensors should be validated for correctness.
-            Set to ``False`` for faster computations.
-        kwargs: Additional keyword arguments, see :ref:`Metric kwargs` for more info.
-
-    Example (multi-label):
-        >>> from torch import tensor
-        >>> # Example with 4 samples and 3 labels (multi-label: targets are 0/1 per label)
-        >>> preds = tensor([[0.25, 0.20, 0.55],
-        ...                 [0.55, 0.05, 0.40],
-        ...                 [0.10, 0.30, 0.60],
-        ...                 [0.90, 0.05, 0.05]])
-        >>> target = tensor([[1, 0, 0],
-        ...                 [0, 1, 0],
-        ...                 [0, 0, 1],
-        ...                 [1, 0, 0]])
-        >>> metric = MultilabelCalibrationError(num_labels=3, n_bins=3, norm='l1')
-        >>> metric(preds, target)
-        tensor(0.2222)
-        >>> mlce = MultilabelCalibrationError(num_labels=3, n_bins=3, norm='l2')
-        >>> mlce(preds, target)
-        tensor(0.1235)
-        >>> mlce = MultilabelCalibrationError(num_labels=3, n_bins=3, norm='max')
-        >>> mlce(preds, target)
-        tensor(0.3333)
-
+        num_labels (int): Number of labels in the multilabel classification task.
+        n_bins (int): Number of bins to use for calibration. Default is 10.
     """
-
-    is_differentiable: bool = False
-    higher_is_better: bool = False
-    full_state_update: bool = False
-    plot_lower_bound: float = 0.0
-    plot_upper_bound: float = 1.0
-    plot_legend_name: str = "Class"
-
-    confidences: List[Tensor]
-    accuracies: List[Tensor]
 
     def __init__(
         self,
         num_labels: int,
-        n_bins: int = 15,
+        n_bins: int = 10,
         norm: Literal["l1", "l2", "max"] = "l1",
-        threshold: Optional[float] = 0.5,
-        ignore_index: Optional[int] = None,
-        validate_args: bool = True,
+        type: Literal["global", "marginal"] = "global",
+        dist_sync_on_step: bool = False,
         **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)
-        if validate_args:
-            _multilabel_calibration_error_arg_validation(
-                num_labels, n_bins, norm, ignore_index
-            )
-        self.validate_args = validate_args
+        super().__init__(dist_sync_on_step=dist_sync_on_step, **kwargs)
         self.num_labels = num_labels
         self.n_bins = n_bins
         self.norm = norm
-        self.ignore_index = ignore_index
-        self.add_state("confidences", [], dist_reduce_fx="cat")
-        self.add_state("accuracies", [], dist_reduce_fx="cat")
-        self.threshold = threshold
+        self.type = type
+        self.add_state("preds", default=[], dist_reduce_fx="cat")
+        self.add_state("targets", default=[], dist_reduce_fx="cat")
 
-    def update(self, preds: Tensor, target: Tensor) -> None:
-        """Update metric states with predictions and targets."""
-        if self.validate_args:
-            _multilabel_calibration_error_tensor_validation(
-                preds, target, self.num_labels, self.ignore_index
-            )
-        preds, target = _multilabel_confusion_matrix_format(
-            preds, target, num_labels=self.num_labels, threshold=self.threshold
-        )
-        confidences, accuracies = _multilabel_calibration_error_update(
-            preds, target, self.threshold
-        )
-        self.confidences.append(confidences)
-        self.accuracies.append(accuracies)
-
-    def compute(self) -> Tensor:
-        """Compute metric."""
-        confidences = dim_zero_cat(self.confidences)
-        accuracies = dim_zero_cat(self.accuracies)
-        # compute binary calibration error per label and average
-        ce_per_label = []
-        for c in range(self.num_labels):
-            conf = confidences[:, c]
-            acc = accuracies[:, c]
-            ce = _ce_compute(conf, acc, self.n_bins, norm=self.norm)
-            ce_per_label.append(ce)
-        ce_per_label = torch.stack(ce_per_label)
-        return ce_per_label.mean()
-
-    def plot(
-        self,
-        val: Optional[Union[Tensor, Sequence[Tensor]]] = None,
-        ax: Optional[_AX_TYPE] = None,
-    ) -> _PLOT_OUT_TYPE:
-        """Plot a single or multiple values from the metric.
+    def update(self, preds: Tensor, targets: Tensor) -> None:
+        """
+        Update the state with new predictions and targets.
 
         Args:
-            val: Either a single result from calling `metric.forward` or `metric.compute` or a list of these results.
-                If no value is provided, will automatically call `metric.compute` and plot that result.
-            ax: An matplotlib axis object. If provided will add plot to that axis
+            preds (Tensor): Model predictions of shape (N, C) or (N, C, ...).
+            targets (Tensor): Ground truth labels of shape (N, C) or (N, C, ...).
+        """
+        preds = torch.as_tensor(preds, dtype=torch.float32)
+        targets = torch.as_tensor(targets, dtype=torch.float32)
+        if preds.dim() > 2:
+            preds = preds.view(-1, preds.shape[-1])
+            targets = targets.view(-1, targets.shape[-1])
+        self.preds.append(preds)
+        self.targets.append(targets)
+
+    def compute(self) -> torch.Tensor:
+        """
+        Compute the Expected Calibration Error (ECE).
 
         Returns:
-            Figure object and Axes object
-
-        Raises:
-            ModuleNotFoundError:
-                If `matplotlib` is not installed
-
-        .. plot::
-            :scale: 75
-
-            >>> from torch import randn, randint
-            >>> # Example plotting a single value
-            >>> from torchmetrics.classification import MulticlassCalibrationError
-            >>> metric = MulticlassCalibrationError(num_labels=3, n_bins=3, norm='l1')
-            >>> metric.update(randn(20,3).softmax(dim=-1), randint(3, (20,)))
-            >>> fig_, ax_ = metric.plot()
-
-        .. plot::
-            :scale: 75
-
-            >>> from torch import randn, randint
-            >>> # Example plotting a multiple values
-            >>> from torchmetrics.classification import MulticlassCalibrationError
-            >>> metric = MulticlassCalibrationError(num_labels=3, n_bins=3, norm='l1')
-            >>> values = []
-            >>> for _ in range(20):
-            ...     values.append(metric(randn(20,3).softmax(dim=-1), randint(3, (20,))))
-            >>> fig_, ax_ = metric.plot(values)
-
+            torch.Tensor: Scalar ECE value.
         """
-        return self._plot(val, ax)
+        return compute_calibration_error(
+            torch.cat(self.preds, dim=0),
+            torch.cat(self.targets, dim=0),
+            n_bins=self.n_bins,
+            norm=self.norm,
+            type=self.type,
+        )
 
 
-def _multilabel_calibration_error_arg_validation(
-    num_labels: int,
-    n_bins: int,
+def compute_calibration_error(
+    predictions,
+    targets,
+    n_bins=10,
     norm: Literal["l1", "l2", "max"] = "l1",
-    ignore_index: Optional[int] = None,
-) -> None:
-    if not isinstance(num_labels, int) or num_labels < 2:
-        raise ValueError(
-            f"Expected argument `num_labels` to be an integer larger than 1, but got {num_labels}"
-        )
-    if not isinstance(n_bins, int) or n_bins < 1:
-        raise ValueError(
-            f"Expected argument `n_bins` to be an integer larger than 0, but got {n_bins}"
-        )
-    allowed_norm = ("l1", "l2", "max")
-    if norm not in allowed_norm:
-        raise ValueError(
-            f"Expected argument `norm` to be one of {allowed_norm}, but got {norm}."
-        )
-    if ignore_index is not None and not isinstance(ignore_index, int):
-        raise ValueError(
-            f"Expected argument `ignore_index` to either be `None` or an integer, but got {ignore_index}"
-        )
-
-
-def _multilabel_calibration_error_tensor_validation(
-    preds: Tensor, target: Tensor, num_labels: int, ignore_index: Optional[int] = None
-) -> None:
-    _multilabel_confusion_matrix_tensor_validation(
-        preds, target, num_labels, ignore_index
-    )
-    if not preds.is_floating_point():
-        raise ValueError(
-            "Expected argument `preds` to be floating tensor with probabilities/logits"
-            f" but got tensor with dtype {preds.dtype}"
-        )
-
-
-def multilabel_calibration_error(
-    preds: Tensor,
-    target: Tensor,
-    num_labels: int,
-    n_bins: int = 15,
-    norm: Literal["l1", "l2", "max"] = "l1",
-    ignore_index: Optional[int] = None,
-    validate_args: bool = True,
-    threshold: Optional[float] = 0.5,
-) -> Tensor:
-    r"""Expected Calibration Error (ECE) for multilabel tasks.
-
-    This metric quantifies how well a multilabel model's predicted probabilities match the true label distribution.
-    Three different norms are implemented, each corresponding to a variation of the calibration error metric:
-
-    .. math::
-                ext{ECE} = \sum_i^N b_i \|(p_i - c_i)\|, \text{L1 norm (Expected Calibration Error)}
-
-    .. math::
-                ext{MCE} =  \max_{i} (p_i - c_i), \text{Infinity norm (Maximum Calibration Error)}
-
-    .. math::
-                ext{RMSCE} = \sqrt{\sum_i^N b_i(p_i - c_i)^2}, \text{L2 norm (Root Mean Square Calibration Error)}
-
-    Where :math:`p_i` is the empirical accuracy in bin :math:`i`, :math:`c_i` is the average confidence of
-    predictions in bin :math:`i`, and :math:`b_i` is the fraction of data points in bin :math:`i`. Bins are constructed
-    uniformly in the [0,1] range.
-
-    Accepts the following input tensors (multilabel):
-
-    - ``preds`` (float tensor): ``(N, C, ...)``. Each row contains probabilities or logits for C labels.
-      If preds has values outside [0,1], logits are assumed and will be auto-sigmoid/softmaxed.
-    - ``target`` (int tensor): ``(N, C, ...)``. Each row contains binary ground truth labels (0 or 1) for C labels.
-      Only values in {0,1} are valid (except if `ignore_index` is specified).
-
-    Any additional dimensions ``...`` will be flattened into the batch dimension.
+    type: Literal["global", "marginal"] = "global",
+) -> torch.Tensor:
+    """
+    Compute calibration error for multilabel classification.
 
     Args:
-        preds: Tensor with predictions, shape (N, C, ...)
-        target: Tensor with true binary labels, shape (N, C, ...)
-        num_labels: Integer specifying the number of labels/classes
-        n_bins: Number of bins to use when computing the metric.
-        norm: Norm used to compare empirical and expected probability bins ('l1', 'l2', 'max').
-        ignore_index: Specifies a target value that is ignored and does not contribute to the metric calculation
-        validate_args: If True, input arguments and tensors are validated for correctness.
-
-    Example (multilabel):
-        >>> from torch import tensor
-        >>> preds = tensor([[0.25, 0.20, 0.55],
-        ...                 [0.55, 0.05, 0.40],
-        ...                 [0.10, 0.30, 0.60],
-        ...                 [0.90, 0.05, 0.05]])
-        >>> target = tensor([[1, 0, 0],
-        ...                 [0, 1, 0],
-        ...                 [0, 0, 1],
-        ...                 [1, 0, 0]])
-        >>> multilabel_calibration_error(preds, target, num_labels=3, n_bins=3, norm='l1')
-        tensor(0.2222)
-        >>> multilabel_calibration_error(preds, target, num_labels=3, n_bins=3, norm='l2')
-        tensor(0.1235)
-        >>> multilabel_calibration_error(preds, target, num_labels=3, n_bins=3, norm='max')
-        tensor(0.3333)
-
+        predictions (Tensor): Model predictions (N, C) or (N, C, ...).
+        targets (Tensor): Ground truth labels (N, C) or (N, C, ...).
+        n_bins (int): Number of bins to use for calibration. Default is 10.
+        norm (str): Norm to use for calibration error ('l1', 'l2', or 'max'). Default is 'l1'.
+        type (str): Type of calibration error to compute ('global' or 'marginal').
+            'global': Treat all predictions as a single pool (flattened).
+            'marginal': Compute ECE per label and average (macro over labels).
+    Returns:
+        torch.Tensor: Scalar calibration error.
     """
-    if validate_args:
-        _multilabel_calibration_error_arg_validation(
-            num_labels, n_bins, norm, ignore_index
+    # Ensure torch tensors and float type
+    preds = torch.as_tensor(predictions, dtype=torch.float32)
+    targs = torch.as_tensor(targets, dtype=torch.float32)
+    if preds.dim() > 2:
+        preds = preds.view(-1, preds.shape[-1])
+        targs = targs.view(-1, targs.shape[-1])
+    N, C = preds.shape
+
+    if type == "global":
+        # Flatten all predictions and targets
+        conf = preds.flatten()
+        labels = targs.flatten()
+        bin_confs, bin_accs, bin_weights, ece, mce = _bin_stats_torch(
+            conf, labels, n_bins=n_bins, quantile=False
         )
-        _multilabel_calibration_error_tensor_validation(
-            preds, target, num_labels, ignore_index
-        )
-    preds, target = _multilabel_confusion_matrix_format(
-        preds, target, num_labels=num_labels, threshold=threshold
-    )
-    # preds, target: (N, C)
-    num_labels = preds.shape[1]
-    ce_per_label = []
-    for c in range(num_labels):
-        conf = preds[:, c].float()
-        acc = ((preds[:, c] > threshold).float() == target[:, c].float()).float()
-        ce = _ce_compute(conf, acc, n_bins, norm)
-        ce_per_label.append(ce)
-    ce_per_label = torch.stack(ce_per_label)
-    return ce_per_label.mean()
+        if norm == "l1":
+            return torch.tensor(ece)
+        elif norm == "l2":
+            # L2: weighted root mean squared calibration gap
+            valid = bin_weights > 0
+            l2 = (
+                (bin_weights[valid] * (bin_accs[valid] - bin_confs[valid]) ** 2)
+                .sum()
+                .sqrt()
+            )
+            return l2
+        elif norm == "max":
+            return torch.tensor(mce)
+        else:
+            raise ValueError(f"Unknown norm: {norm}")
+    elif type == "marginal":
+        # Compute ECE per label, then macro-average
+        eces = []
+        for c in range(C):
+            conf = preds[:, c]
+            labels = targs[:, c]
+            bin_confs, bin_accs, bin_weights, ece, mce = _bin_stats_torch(
+                conf, labels, n_bins=n_bins, quantile=False
+            )
+            if norm == "l1":
+                eces.append(ece)
+            elif norm == "l2":
+                valid = bin_weights > 0
+                l2 = (
+                    (bin_weights[valid] * (bin_accs[valid] - bin_confs[valid]) ** 2)
+                    .sum()
+                    .sqrt()
+                    .item()
+                )
+                eces.append(l2)
+            elif norm == "max":
+                eces.append(mce)
+            else:
+                raise ValueError(f"Unknown norm: {norm}")
+        if norm in ["l1", "l2"]:
+            return torch.tensor(eces).mean()
+        elif norm == "max":
+            return torch.tensor(eces).max()
+    else:
+        raise ValueError(f"Unknown type: {type}")
 
 
-def _multilabel_calibration_error_update(
-    preds: Tensor,
-    target: Tensor,
-    threshold: Optional[float] = 0.5,
-) -> Tuple[Tensor, Tensor]:
-    # Accepts preds: (N, C), target: (N, C) for multilabel
-    # If preds are logits, apply sigmoid
-    if not torch.all((preds >= 0) * (preds <= 1)):
-        preds = preds.sigmoid()
-    # Compute per-label confidences and accuracies (no flattening)
-    # preds, target: (N, C)
-    # Confidence: predicted probability per label
-    confidences = preds.float()  # (C,)
-    # Accuracy: mean correctness per label (thresholded prediction == target)
-    accuracies = ((preds > threshold).float() == target.float()).float()
-    return confidences.float(), accuracies.float()
+def _bin_stats_torch(predictions, targets, n_bins=10, quantile=False):
+    """
+    Compute bin-wise calibration statistics for reliability diagrams and ECE/MCE using torch.
+
+    This function bins predictions and targets (flattened) into either uniform or quantile bins,
+    then computes, for each bin:
+      - The mean predicted confidence (average predicted probability)
+      - The mean accuracy (fraction of positives)
+      - The weight (fraction of total samples in the bin)
+      - The calibration gap (absolute difference between accuracy and confidence)
+    It then aggregates these to compute:
+      - ECE (Expected Calibration Error): weighted average of calibration gaps
+      - MCE (Maximum Calibration Error): largest calibration gap across bins
+
+    Args:
+        predictions (Tensor or array-like): Model predicted probabilities, shape (N,) or (N, C). Flattened to 1D.
+        targets (Tensor or array-like): Ground truth binary labels, same shape as predictions. Flattened to 1D.
+        n_bins (int): Number of bins to use for calibration statistics.
+        quantile (bool): If True, use quantile bins (equal number of samples per bin). If False, use uniform bins.
+
+    Returns:
+        bin_confs (torch.Tensor): Mean predicted confidence per bin, shape (n_bins,)
+        bin_accs (torch.Tensor): Mean accuracy per bin, shape (n_bins,)
+        bin_weights (torch.Tensor): Fraction of samples in each bin, shape (n_bins,)
+        ece (float): Expected Calibration Error (weighted average of bin gaps)
+        mce (float): Maximum Calibration Error (largest bin gap)
+    """
+    # Convert to torch tensors and flatten
+    conf = torch.as_tensor(predictions, dtype=torch.float32).reshape(-1)
+    labels = torch.as_tensor(targets, dtype=torch.float32).reshape(-1)
+    n = conf.numel()
+
+    # Choose bin edges: quantile or uniform
+    if quantile:
+        # Quantile binning: edges chosen so each bin has ~equal number of samples
+        qs = torch.linspace(0, 1, n_bins + 1, dtype=conf.dtype, device=conf.device)
+        edges = torch.quantile(conf, qs)
+        edges[0], edges[-1] = 0.0, 1.0  # Ensure endpoints
+        edges = torch.maximum(edges, torch.cummax(edges, 0)[0])  # Ensure non-decreasing
+    else:
+        # Uniform bins in [0, 1]
+        edges = torch.linspace(0, 1, n_bins + 1, dtype=conf.dtype, device=conf.device)
+
+    bin_confs, bin_accs, bin_weights, bin_gaps = [], [], [], []
+    for b in range(n_bins):
+        left, right = edges[b].item(), edges[b + 1].item()
+        # For all but last bin: [left, right)
+        # For last bin: [left, right] (include right endpoint)
+        if b < n_bins - 1:
+            m = (conf >= left) & (conf < right)
+        else:
+            m = (conf >= left) & (conf <= right)
+        if m.any():
+            # Compute mean confidence and accuracy for this bin
+            c_mean = conf[m].mean().item()
+            a_mean = labels[m].mean().item()
+            w = m.sum().item() / n  # Fraction of total samples in this bin
+            gap = abs(a_mean - c_mean)  # Calibration gap
+        else:
+            # Empty bin: set confidence to bin midpoint, accuracy NaN, weight/gap 0
+            c_mean = (left + right) / 2
+            a_mean, w, gap = float("nan"), 0.0, 0.0
+        bin_confs.append(c_mean)
+        bin_accs.append(a_mean)
+        bin_weights.append(w)
+        bin_gaps.append(gap)
+
+    # Convert lists to torch tensors
+    bin_confs = torch.tensor(bin_confs, dtype=conf.dtype)
+    bin_accs = torch.tensor(bin_accs, dtype=conf.dtype)
+    bin_weights = torch.tensor(bin_weights, dtype=conf.dtype)
+    bin_gaps = torch.tensor(bin_gaps, dtype=conf.dtype)
+
+    # Only consider bins with nonzero weight for ECE/MCE
+    valid = bin_weights > 0
+    if valid.any():
+        ece = float((bin_weights[valid] * bin_gaps[valid]).sum().item())
+        mce = float(bin_gaps[valid].max().item())
+    else:
+        ece = 0.0
+        mce = 0.0
+    return bin_confs, bin_accs, bin_weights, ece, mce
