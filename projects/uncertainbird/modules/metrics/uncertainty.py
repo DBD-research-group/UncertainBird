@@ -2,7 +2,8 @@ import logging
 import torch
 from torch import Tensor
 from torchmetrics import Metric, MetricCollection, MaxMetric
-from torchmetrics.classification import AUROC
+from torchmetrics.classification import AUROC, BinaryCalibrationError
+from torchmetrics.utilities.data import dim_zero_cat
 
 
 from birdset.modules.metrics.multilabel import mAP, cmAP, cmAP5, pcmAP, TopKAccuracy
@@ -59,7 +60,7 @@ class MultilabelMetricsConfig:
                     average="macro",
                     thresholds=None,
                 ),
-                # "ECE_OvA": MultilabelCalibrationError(num_labels=num_labels, n_bins=10),
+                "ECE": MultilabelCalibrationError(n_bins=10),
                 # "ECE_Marginal": MultilabelECEMarginal(
                 #     num_labels=num_labels, n_bins=10
                 # ),  # New Metric Added
@@ -74,6 +75,70 @@ class MultilabelMetricsConfig:
                 #     num_labels=num_labels, n_bins=10
                 # ),  # Adaptive Calibration Error
             }
+        )
+
+
+class MultilabelCalibrationError(BinaryCalibrationError):
+    """
+    Computes the Expected Calibration Error (ECE) for multilabel classification tasks.
+
+    This metric extends BinaryCalibrationError to the multilabel setting, supporting different averaging strategies:
+      - 'marginal': Computes ECE for each class independently and returns the unweighted mean across classes.
+      - 'weighted': Computes ECE for each class and returns the mean weighted by the number of positive samples per class.
+      - 'global': Flattens all predictions and targets, treating the multilabel problem as a single binary problem.
+
+    Args:
+        n_bins (int): Number of bins to use for calibration. Default is 15.
+        norm (str): Norm to use for calibration error ('l1', 'l2', or 'max'). Default is 'l1'.
+        ignore_index (int, optional): Specifies a target value that is ignored and does not contribute to the input gradient. Default is None.
+        validate_args (bool): If True, validates the input arguments. Default is True.
+        multilabel_average (str, optional): Specifies the type of averaging performed on the data. Options are 'marginal', 'weighted', or 'global'. Default is 'marginal'.
+        **kwargs: Additional keyword arguments passed to BinaryCalibrationError.
+
+    Example:
+        >>> from torch import tensor
+        >>> metric = MultilabelCalibrationError(n_bins=10, norm='l1', multilabel_average='marginal')
+        >>> preds = tensor([[0.2, 0.8], [0.6, 0.4]])
+        >>> targets = tensor([[0, 1], [1, 0]])
+        >>> metric.update(preds, targets)
+        >>> ece = metric.compute()
+        >>> print(ece)
+    """
+
+    def __init__(
+        self,
+        n_bins=15,
+        norm="l1",
+        ignore_index=None,
+        validate_args=True,
+        multilabel_average: Optional[
+            Literal["marginal", "weighted", "global"]
+        ] = "marginal",
+        **kwargs
+    ):
+        super().__init__(n_bins, norm, ignore_index, validate_args, **kwargs)
+        self.multilabel_average = multilabel_average
+
+    def update(self, preds, target):
+        # check if preds are in [0, 1] if not apply sigmoid
+        if preds.is_floating_point():
+            if not torch.all((preds >= 0) & (preds <= 1)):
+                preds = torch.sigmoid(preds)
+
+        self.confidences.append(preds)
+        self.accuracies.append(target)
+
+    def compute(self) -> Tensor:
+        confidences = dim_zero_cat(self.confidences)
+        accuracies = dim_zero_cat(self.accuracies)
+        return multilabel_calibration_error(
+            confidences,
+            accuracies,
+            n_bins=self.n_bins,
+            norm=self.norm,
+            ignore_index=self.ignore_index,
+            validate_args=self.validate_args,
+            multilabel_average=self.multilabel_average,
         )
 
 
