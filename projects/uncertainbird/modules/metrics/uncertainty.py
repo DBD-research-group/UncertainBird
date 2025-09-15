@@ -65,9 +65,7 @@ class MultilabelMetricsConfig:
                 "ECE@5": TopKMultiLabelCalibrationError(
                     k=5, n_bins=10
                 ),  # Top-k calibration for practical multilabel prediction
-                "ECE@10": TopKMultiLabelCalibrationError(
-                    num_labels=num_labels, k=10, n_bins=10
-                ),
+                "ECE@10": TopKMultiLabelCalibrationError(k=10, n_bins=10),
             }
         )
 
