@@ -4,6 +4,7 @@ from torch import Tensor
 from torchmetrics import Metric, MetricCollection, MaxMetric
 from torchmetrics.classification import AUROC, BinaryCalibrationError
 from torchmetrics.utilities.data import dim_zero_cat
+from uncertainbird.utils.misc import extract_top_k
 
 
 from birdset.modules.metrics.multilabel import mAP, cmAP, cmAP5, pcmAP, TopKAccuracy
@@ -211,3 +212,78 @@ def multilabel_calibration_error(
         else:  # 'marginal'
             ece = torch.stack(ece_per_class).mean()
     return ece
+
+
+class TopKMultiLabelCalibrationError(MultilabelCalibrationError):
+    """
+    Computes the Top-K Expected Calibration Error (ECE) for multilabel classification tasks.
+
+    This metric extends MultilabelCalibrationError by restricting the ECE computation to the top-K classes, selected according to a specified criterion. This is useful for evaluating calibration on the most relevant or confident classes, which often matter most in multilabel settings with many possible classes.
+
+    Selection Criteria (``criterion``):
+        - 'probability': Selects the K classes with the highest single prediction scores across all samples (default).
+        - 'predicted class': Selects the K classes with the highest number of predicted positive samples (predictions >= 0.5).
+        - 'target class': Selects the K classes with the highest number of positive ground truth samples.
+
+    Args:
+        n_bins (int): Number of bins to use for calibration. Default is 15.
+        norm (str): Norm to use for calibration error ('l1', 'l2', or 'max'). Default is 'l1'.
+        ignore_index (int, optional): Specifies a target value that is ignored and does not contribute to the input gradient. Default is None.
+        validate_args (bool): If True, validates the input arguments. Default is True.
+        multilabel_average (str, optional): Specifies the type of averaging performed on the data. Options are 'marginal', 'weighted', or 'global'. Default is 'marginal'.
+        k (int): Number of top classes to consider for ECE computation. Default is 5.
+        criterion (str): Criterion for selecting top-K classes ('probability', 'predicted class', or 'target class'). Default is 'probability'.
+        **kwargs: Additional keyword arguments passed to MultilabelCalibrationError.
+
+    Example:
+        >>> from torch import tensor
+        >>> metric = TopKMultiLabelCalibrationError(n_bins=10, k=3, criterion='probability')
+        >>> preds = tensor([[0.2, 0.8, 0.5], [0.6, 0.4, 0.9]])
+        >>> targets = tensor([[0, 1, 1], [1, 0, 0]])
+        >>> metric.update(preds, targets)
+        >>> ece = metric.compute()
+        >>> print(ece)
+
+    Note:
+        - Only the top-K classes (according to the selected criterion) are used for ECE computation.
+        - The averaging strategy (``multilabel_average``) is applied after selecting the top-K classes.
+        - This metric is especially useful for large multilabel problems where only a subset of classes are of primary interest.
+    """
+
+    def __init__(
+        self,
+        n_bins: int = 15,
+        norm: str = "l1",
+        ignore_index: Optional[int] = None,
+        validate_args: bool = True,
+        multilabel_average: Optional[
+            Literal["marginal", "weighted", "global"]
+        ] = "marginal",
+        k: int = 5,
+        criterion: Literal[
+            "probability", "predicted class", "target class"
+        ] = "probability",
+        **kwargs
+    ):
+        super().__init__(
+            n_bins, norm, ignore_index, validate_args, multilabel_average, **kwargs
+        )
+        self.k = k
+        self.criterion = criterion
+
+    def compute(self) -> Tensor:
+        confidences = dim_zero_cat(self.confidences)
+        accuracies = dim_zero_cat(self.accuracies)
+        topk_confidences, topk_accuracies = extract_top_k(
+            confidences, accuracies, k=self.k, criterion=self.criterion
+        )
+
+        return multilabel_calibration_error(
+            topk_confidences,
+            topk_accuracies,
+            n_bins=self.n_bins,
+            norm=self.norm,
+            ignore_index=self.ignore_index,
+            validate_args=self.validate_args,
+            multilabel_average=self.multilabel_average,
+        )

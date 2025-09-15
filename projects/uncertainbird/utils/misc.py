@@ -1,6 +1,7 @@
 import pickle
 from pathlib import Path
 import numpy as np
+from typing import Literal
 import torch
 from typing import Union, Tuple, Dict, Any
 
@@ -133,13 +134,35 @@ def print_classwise_statistics(
             )
 
 
-def extract_top_k(predictions, targets, k=5):
+def extract_top_k(
+    predictions,
+    targets,
+    k=5,
+    criterion: Literal[
+        "probability", "predicted class", "target class"
+    ] = "probability",
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Extract all predictions and targets for top-k classes, which have the highest predicted probabilities."""
 
     num_labels = predictions.shape[1]
-    # Find top-k classes by highest single prediction scores across all samples
-    max_preds_per_class = predictions.max(dim=0)[0]  # [num_labels]
-    _, top_k_class_indices = torch.topk(max_preds_per_class, min(k, num_labels))  # [k]
+    if criterion == "predicted class":
+        # Find top-k classes by highest number of predicted positive samples
+        sum_preds_per_class = (predictions >= 0.5).sum(dim=0)  # [num_labels]
+        _, top_k_class_indices = torch.topk(
+            sum_preds_per_class, min(k, num_labels)
+        )  # [k]
+    elif criterion == "target class":
+        # Find top-k classes by highest number of positive samples in targets
+        sum_targets_per_class = targets.sum(dim=0)  # [num_labels]
+        _, top_k_class_indices = torch.topk(
+            sum_targets_per_class, min(k, num_labels)
+        )  # [k]
+    elif criterion == "probability":
+        # Find top-k classes by highest single prediction scores across all samples
+        max_preds_per_class = predictions.max(dim=0)[0]  # [num_labels]
+        _, top_k_class_indices = torch.topk(
+            max_preds_per_class, min(k, num_labels)
+        )  # [k]
     top_k_preds = predictions[:, top_k_class_indices]  #
     top_k_targets = targets[:, top_k_class_indices]  #
     return top_k_preds, top_k_targets
