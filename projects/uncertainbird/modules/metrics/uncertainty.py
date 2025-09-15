@@ -62,19 +62,12 @@ class MultilabelMetricsConfig:
                     thresholds=None,
                 ),
                 "ECE": MultilabelCalibrationError(n_bins=10),
-                # "ECE_Marginal": MultilabelECEMarginal(
-                #     num_labels=num_labels, n_bins=10
-                # ),  # New Metric Added
-                # "ECE@5": MultilabelECETopK(
-                #     num_labels=num_labels, k=5, n_bins=10
-                # ),  # Top-k calibration for practical multilabel prediction
-                # "ECE@10": MultilabelECETopK(num_labels=num_labels, k=10, n_bins=10),
-                # "ECE@num_labels": MultilabelECETopK(
-                #     num_labels=num_labels, k=num_labels, n_bins=10
-                # ),
-                # "ACE_OvA": MultilabelACE(
-                #     num_labels=num_labels, n_bins=10
-                # ),  # Adaptive Calibration Error
+                "ECE@5": TopKMultiLabelCalibrationError(
+                    k=5, n_bins=10
+                ),  # Top-k calibration for practical multilabel prediction
+                "ECE@10": TopKMultiLabelCalibrationError(
+                    num_labels=num_labels, k=10, n_bins=10
+                ),
             }
         )
 
@@ -232,7 +225,7 @@ class TopKMultiLabelCalibrationError(MultilabelCalibrationError):
         validate_args (bool): If True, validates the input arguments. Default is True.
         multilabel_average (str, optional): Specifies the type of averaging performed on the data. Options are 'marginal', 'weighted', or 'global'. Default is 'marginal'.
         k (int): Number of top classes to consider for ECE computation. Default is 5.
-        criterion (str): Criterion for selecting top-K classes ('probability', 'predicted class', or 'target class'). Default is 'probability'.
+        criterion (str): Criterion for selecting top-K classes ('probability', 'predicted class', or 'target class'). Default is 'target-class'.
         **kwargs: Additional keyword arguments passed to MultilabelCalibrationError.
 
     Example:
@@ -262,7 +255,7 @@ class TopKMultiLabelCalibrationError(MultilabelCalibrationError):
         k: int = 5,
         criterion: Literal[
             "probability", "predicted class", "target class"
-        ] = "probability",
+        ] = "target class",
         **kwargs
     ):
         super().__init__(

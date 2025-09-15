@@ -64,19 +64,18 @@ This project implements advanced calibration error metrics for multilabel bird s
 
 ### Calibration Error Metrics Suite
 
-Four complementary calibration error metrics following the One-vs-All (OvA) decomposition approach:
+Four complementary calibration error metrics for multilabel classification, following the One-vs-All (OvA) decomposition approach:
 
-- **MultilabelCalibrationError (ECE_OvA)**: Standard Expected Calibration Error with uniform binning
-- **MultilabelECEMarginal (ECE_Marginal)**: Per-label calibration error with averaging across labels  
-- **MultilabelECETopK (ECE@k)**: Top-k calibration error for practical multilabel prediction scenarios
-- **MultilabelACE (ACE_OvA)**: Adaptive Calibration Error with quantile-based binning
+- **MultilabelCalibrationError**: Standard Expected Calibration Error (ECE) with uniform binning. Supports 'marginal', 'weighted', and 'global' averaging across classes.
+- **TopKMultiLabelCalibrationError**: Computes ECE for only the top-K most relevant classes, with flexible selection criteria ('probability', 'predicted class', or 'target class').
+
 
 **Key Features:**
-- **Robust NaN handling** for production environments
-- **CUDA and mixed precision support** for modern training pipelines  
-- **Comprehensive test coverage** with 26 test cases across 4 metric classes
-- **Device/dtype compatibility** for distributed training
-- **Refactored codebase** with utility functions to eliminate code duplication
+- Robust NaN handling for production environments
+- CUDA and mixed precision support for modern training pipelines
+- Comprehensive test coverage with 26 test cases across all metric classes
+- Device/dtype compatibility for distributed training
+- Refactored codebase with utility functions to eliminate code duplication
 
 **Quick Test:**
 ```bash
@@ -84,15 +83,6 @@ cd projects/uncertainbird
 poetry run pytest tests/test_metrics.py -v  # Full test suite (26 tests)
 poetry run python tests/test_metrics.py    # Smoke test
 ```
-
-**Usage in experiments:**
-The metrics are automatically included in evaluation configs and will output:
-- `test/ECE_OvA`: Standard One-vs-All calibration error
-- `test/ECE_Marginal`: Marginal calibration error with per-label analysis
-- `test/ECE@5`: Top-5 calibration error for practical prediction scenarios  
-- `test/ECE@10`: Top-10 calibration error
-- `test/ECE@num_labels`: Full calibration error (mathematically equivalent to ECE_OvA)
-- `test/ACE_OvA`: Adaptive calibration error with quantile-based binning
 
 For detailed documentation, see [projects/uncertainbird/README.md](projects/uncertainbird/README.md).
 

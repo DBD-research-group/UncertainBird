@@ -140,7 +140,7 @@ def extract_top_k(
     k=5,
     criterion: Literal[
         "probability", "predicted class", "target class"
-    ] = "probability",
+    ] = "target class",
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Extract all predictions and targets for top-k classes, which have the highest predicted probabilities."""
 
