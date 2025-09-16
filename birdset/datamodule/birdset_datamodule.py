@@ -168,7 +168,8 @@ class BirdSetDataModule(BaseDataModuleHF):
                     batched=True,
                     batch_size=300,
                     load_from_cache_file=True,
-                    num_proc=self.dataset_config.n_workers,
+                    # num_proc=self.dataset_config.n_workers,
+                    num_proc=1,  # TODO: bug in datasets with multiprocessing and list columns
                     desc=f"One-hot-encoding {split} labels.",
                 )
 
