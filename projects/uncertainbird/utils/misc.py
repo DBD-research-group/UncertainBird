@@ -51,7 +51,6 @@ def load_dump(
         print(f"Predictions shape: {predictions.shape}")
         print(f"Targets shape: {targets.shape}")
         print(f"Model info: {metadata['model_info']}")
-        print(f"Save logits: {metadata['save_logits']}")
 
     return predictions, targets, metadata
 
