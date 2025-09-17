@@ -23,6 +23,9 @@ logger:
 
 module:
 
+  metrics:
+    num_labels: 9736  # BirdSetLT has 9736 classes
+
   mask_logits: False
   network:
     model:
@@ -41,11 +44,10 @@ datamodule:
     class_weights_sampler: null
     classlimit: null
     eventlimit: null
-    num_classes: 9736  # Override number of classes to match BirdSetLT
-
+    # num_classes: 9736  # Override number of classes to match BirdSetLT
   loaders:
     test:
-      batch_size: 64
+      batch_size: 2048
       num_workers: 32
 
 callbacks:
