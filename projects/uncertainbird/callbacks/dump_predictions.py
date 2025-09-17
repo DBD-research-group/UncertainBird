@@ -108,7 +108,6 @@ class DumpPredictionsCallback(Callback):
                 "target_shape": list(all_targets.shape),
                 "num_batches": len(self.test_predictions),
                 "batch_metadata": self.test_metadata,
-                "save_logits": self.save_logits,
                 "model_info": {
                     "class_name": pl_module.__class__.__name__,
                     "task": getattr(pl_module, "task", "unknown"),
