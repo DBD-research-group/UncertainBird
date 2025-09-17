@@ -72,7 +72,8 @@ def train(cfg):
     # Setup model
     log.info(f"Instantiate model <{cfg.module.network.model._target_}>")
     with open_dict(cfg):
-        cfg.module.metrics["num_labels"] = datamodule.num_classes
+        if "num_labels" not in cfg.module.metrics:
+            cfg.module.metrics["num_labels"] = datamodule.num_classes
         cfg.module.network.model["num_classes"] = (
             datamodule.num_classes
         )  # TODO not the correct classes when masking in valid/test only
