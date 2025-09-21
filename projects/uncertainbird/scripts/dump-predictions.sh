@@ -112,7 +112,7 @@ for model in "${models[@]}"; do
       datamodule.dataset.hf_name=$dname \
       trainer.devices=[$gpu] \
       datamodule.loaders.test.batch_size=$batch_size \
-      callbacks.dump_predictions.save_dir="$output_dir//$model/$dname" \
+      callbacks.dump_predictions.save_dir="$output_dir/$model/$dname" \
       $extra_args
   done
 done

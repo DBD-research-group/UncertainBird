@@ -1,17 +1,16 @@
 import logging
 import torch
 from torch import Tensor
+from typing import Literal, Optional
 from torchmetrics import Metric, MetricCollection, MaxMetric
 from torchmetrics.classification import AUROC, BinaryCalibrationError
+from torchmetrics.functional.classification import binary_calibration_error
 from torchmetrics.utilities.data import dim_zero_cat
-from uncertainbird.utils.misc import extract_top_k
 
 
 from birdset.modules.metrics.multilabel import mAP, cmAP, cmAP5, pcmAP, TopKAccuracy
 
-from typing import Any, List, Literal, Optional, Sequence, Tuple, Union
-
-from torchmetrics.functional.classification import binary_calibration_error
+from uncertainbird.utils.misc import extract_top_k
 
 
 class MultilabelMetricsConfig:
