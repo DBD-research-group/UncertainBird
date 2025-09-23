@@ -1,6 +1,5 @@
 import pickle
 from pathlib import Path
-import numpy as np
 from typing import Literal
 import torch
 from typing import Union, Tuple, Dict, Any

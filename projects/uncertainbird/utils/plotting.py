@@ -71,7 +71,7 @@ def plot_pr_curve_per_class(predictions, targets, class_names=None, ax=None):
 
 
 def plot_reliability_diagram(
-    predictions, targets, n_bins=10, ax=None, title="Reliability Diagram"
+    predictions, targets, n_bins=10, ax=None, title="Reliability Diagram", color="red"
 ):
     """Plot a reliability diagram to visualize calibration of probabilistic predictions.
 
@@ -131,7 +131,7 @@ def plot_reliability_diagram(
     ax.plot(
         bin_confidences,
         bin_accuracies,
-        "r-",
+        color=color,
         alpha=0.8,
         linewidth=2,
         label="Model Calibration",
@@ -170,8 +170,8 @@ def plot_combined_reliability_diagram(
     fig, ax = plt.subplots(figsize=(10, 8))
 
     for dataset in data:
-        predictions = data[dataset][0]
-        targets = data[dataset][1]
+        predictions = data[dataset]["predictions"]
+        targets = data[dataset]["targets"]
         bin_confidences, bin_accuracies, bin_counts = compute_bin_stats(
             predictions, targets, n_bins=n_bins
         )
@@ -189,7 +189,7 @@ def plot_combined_reliability_diagram(
             edgecolors="black",
             linewidth=0.5,
             label=(
-                f"{dataset} | ECE weighted: {data[dataset]['metrics']['ece_weighted']:.2f}"
+                f"{dataset} | ECE weighted: {data[dataset]['metrics']['ece_weighted']*100:.2f}"
                 if "metrics" in data[dataset]
                 else dataset
             ),
