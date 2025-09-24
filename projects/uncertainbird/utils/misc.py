@@ -1,8 +1,10 @@
+import os
 import pickle
 from pathlib import Path
 from typing import Literal
+from matplotlib import pyplot as plt
 import torch
-from typing import Union, Tuple, Dict, Any
+from typing import Union, Tuple, Dict, Any, List
 
 
 from torchmetrics.functional.classification import (
@@ -58,6 +60,97 @@ def load_dump(
         print(f"Model info: {metadata['model_info']}")
 
     return predictions, targets, metadata
+
+
+def load_data(
+    log_dir: Union[str, Path],
+) -> Tuple[Dict[str, Dict[str, Any]], torch.Tensor, torch.Tensor, List[str]]:
+    data = {}
+    dataset_names = sorted(
+        [d for d in os.listdir(log_dir) if os.path.isdir(os.path.join(log_dir, d))]
+    )
+
+    # colormap without red (tab10 index 3 is red)
+    colors = plt.cm.tab10
+    skip_index = 3
+    available_indices = [i for i in range(colors.N) if i != skip_index]
+    dataset_colors = {}
+
+    for i, ds in enumerate(dataset_names):
+        data[ds] = {}
+        color_idx = available_indices[i % len(available_indices)]
+        dataset_colors[ds] = colors(color_idx)
+
+        ds_path = os.path.join(log_dir, ds)
+        pkl_files = [f for f in os.listdir(ds_path) if f.endswith(".pkl")]
+        if not pkl_files:
+            continue
+        # pick most recent file
+        pkl_files.sort(
+            key=lambda f: os.path.getmtime(os.path.join(ds_path, f)), reverse=True
+        )
+        file_path = os.path.join(ds_path, pkl_files[0])
+        preds, t, metadata = load_dump(file_path)
+        data[ds]["predictions"] = preds
+        data[ds]["targets"] = t.int()
+        data[ds]["metadata"] = metadata
+        data[ds]["color"] = dataset_colors[ds]
+
+    # concatenate
+    valid_keys = [
+        k
+        for k, v in data.items()
+        if isinstance(v, dict)
+        and "predictions" in v
+        and "targets" in v
+        and isinstance(v["predictions"], torch.Tensor)
+        and isinstance(v["targets"], torch.Tensor)
+    ]
+
+    if not valid_keys:
+        raise ValueError("No datasets with both 'predictions' and 'targets' present.")
+
+    # optionally report skipped datasets
+    skipped = [k for k in data.keys() if k not in valid_keys]
+    if skipped:
+        print("Skipped datasets (missing predictions/targets):", skipped)
+
+    predictions = torch.cat([data[k]["predictions"] for k in valid_keys], dim=0)
+    targets = torch.cat([data[k]["targets"] for k in valid_keys], dim=0)
+
+    data = {k: data[k] for k in valid_keys}
+
+    return data, predictions, targets, valid_keys
+
+
+def prune_non_target_classes(
+    data: Dict[str, Dict[str, Any]], targets
+) -> Dict[str, Dict[str, Any]]:
+    """Remove classes that have no positive samples in any dataset.
+
+    This function scans through all datasets and identifies classes that have at least one positive
+    sample in the targets. It then prunes classes that have no positive samples across all datasets,
+    updating both predictions and targets accordingly.
+
+    Args:
+        data: Dictionary where each key is a dataset name and each value is another dictionary
+              containing 'predictions' and 'targets' tensors.
+    Returns:
+        A new dictionary with the same structure as the input, but with classes that have no
+        positive samples removed from both predictions and targets.
+    Example:
+        >>> pruned_data = prune_non_target_classes(data)
+        >>> for ds, content in pruned_data.items():
+        ...     print(f"{ds}: {content['predictions'].shape}, {content['targets'].shape}")
+    """
+
+    for key in list(data.keys()):
+        # keep the dict structure; only replace the predictions/targets tensors
+        preds = data[key]["predictions"][:, targets.sum(dim=0).gt(0)]
+        tars = data[key]["targets"][:, targets.sum(dim=0).gt(0)]
+        data[key]["predictions"] = preds
+        data[key]["targets"] = tars
+    return data
 
 
 def prediction_statistics(
@@ -271,17 +364,145 @@ def compute_bin_stats(
         bin_counts.append(count)
 
     if not bin_confidences:
-        # No valid bins, just plot perfect calibration line
-        ax.plot([0, 1], [0, 1], "k--", alpha=0.5, label="Perfect Calibration")
-        ax.set_xlabel("Mean Predicted Probability")
-        ax.set_ylabel("Fraction of Positives")
-        ax.set_title(title)
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        return ax
+        # No valid bins; return empty tensors
+        return (
+            torch.tensor([], dtype=predictions.dtype),
+            torch.tensor([], dtype=predictions.dtype),
+            torch.tensor([], dtype=predictions.dtype),
+        )
 
     # Convert to arrays for plotting
     bin_confidences = torch.tensor(bin_confidences)
     bin_accuracies = torch.tensor(bin_accuracies)
     bin_counts = torch.tensor(bin_counts)
     return bin_confidences, bin_accuracies, bin_counts
+
+
+def split_test_set(data, split_ratio=0.1):
+    for base_name in list(data.keys()):
+        if base_name.endswith("_cal") or base_name.endswith("_test"):
+            continue
+        entry = data[base_name]
+        if "predictions" not in entry or "targets" not in entry:
+            continue
+
+        preds = entry["predictions"]
+        tars = entry["targets"]
+        n = preds.shape[0]
+        if n == 0:
+            continue
+
+        cal_size_local = max(1, int(split_ratio * n))
+        cal_idx_local = torch.arange(cal_size_local)
+        test_idx_local = torch.arange(cal_size_local, n)
+
+        # Adjust (copy) metadata to reflect subset size if present
+        meta = dict(entry.get("metadata", {}))
+        meta["total_samples"] = n
+
+        # Create calibration split
+        data[f"{base_name}_cal"] = {
+            "predictions": preds[cal_idx_local],
+            "targets": tars[cal_idx_local],
+            "metadata": meta,
+            "color": entry.get("color"),
+        }
+
+        # Create test split
+        data[f"{base_name}_test"] = {
+            "predictions": preds[test_idx_local],
+            "targets": tars[test_idx_local],
+            "metadata": meta,
+            "color": entry.get("color"),
+        }
+    return data
+
+
+def split_based_on_x_samples_per_class(data, samples_per_class=10):
+    """Create calibration/test splits ensuring at most X positive samples per class.
+
+    For every base dataset key (not already suffixed with ``_cal`` or ``_test``),
+    this function scans samples in their existing order and assigns a sample to the
+    calibration subset if it contains at least one positive class whose current
+    calibration count is below ``samples_per_class``. Otherwise the sample is sent
+    to the test subset. Negative-only samples (all-zero targets) go straight to test
+    unless calibration would otherwise remain empty and there are no positives at all.
+
+    Args:
+        data (Dict[str, Dict[str, Any]]): Mapping of dataset names to dictionaries with
+            at minimum keys ``predictions`` (Tensor[N, C]) and ``targets`` (Tensor[N, C]).
+        samples_per_class (int): Maximum number of positive samples per class allowed in
+            the calibration subset.
+
+    Returns:
+        Dict[str, Dict[str, Any]]: The input dictionary augmented with ``*_cal`` and
+        ``*_test`` entries per processed dataset.
+    """
+
+    if samples_per_class <= 0:
+        return data
+
+    base_keys = [
+        k for k in list(data.keys()) if not (k.endswith("_cal") or k.endswith("_test"))
+    ]
+
+    for base_name in base_keys:
+        entry = data.get(base_name, {})
+        preds = entry.get("predictions")
+        tars = entry.get("targets")
+        if not isinstance(preds, torch.Tensor) or not isinstance(tars, torch.Tensor):
+            continue
+        if preds.shape[0] != tars.shape[0]:
+            continue
+        N, C = tars.shape
+        if N == 0:
+            continue
+
+        pos_counts = torch.zeros(C, dtype=torch.long)
+        cal_indices = []
+        test_indices = []
+
+        for idx in range(N):
+            sample_targets = tars[idx]
+            if sample_targets.sum() == 0:
+                test_indices.append(idx)
+                continue
+            positive_classes = (sample_targets > 0).nonzero(as_tuple=False).flatten()
+            quota_mask = pos_counts[positive_classes] < samples_per_class
+            if quota_mask.any():
+                cal_indices.append(idx)
+                for cls in positive_classes[quota_mask]:
+                    pos_counts[cls] += 1
+            else:
+                test_indices.append(idx)
+
+        if not cal_indices and tars.sum() > 0:
+            # move first positive sample if calibration is empty
+            first_positive = int((tars.sum(dim=1) > 0).nonzero(as_tuple=False)[0])
+            cal_indices.append(first_positive)
+            if first_positive in test_indices:
+                test_indices.remove(first_positive)
+
+        cal_idx_tensor = torch.tensor(cal_indices, dtype=torch.long)
+        test_idx_tensor = torch.tensor(test_indices, dtype=torch.long)
+
+        meta = dict(entry.get("metadata", {}))
+        meta["total_samples"] = N
+        color = entry.get("color")
+
+        data[f"{base_name}_cal"] = {
+            "predictions": preds[cal_idx_tensor] if len(cal_idx_tensor) else preds[:0],
+            "targets": tars[cal_idx_tensor] if len(cal_idx_tensor) else tars[:0],
+            "metadata": meta,
+            "color": color,
+        }
+        data[f"{base_name}_test"] = {
+            "predictions": (
+                preds[test_idx_tensor] if len(test_idx_tensor) else preds[:0]
+            ),
+            "targets": tars[test_idx_tensor] if len(test_idx_tensor) else tars[:0],
+            "metadata": meta,
+            "color": color,
+        }
+
+    return data
