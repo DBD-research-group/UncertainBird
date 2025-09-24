@@ -24,7 +24,9 @@ logger:
 module:
 
   metrics:
-    num_labels: 9736  # BirdSetLT has 9736 classes
+    _target_: projects.uncertainbird.modules.metrics.uncertainty.NoMetricsConfig
+    num_labels: 9736  # Set this to the number of classes in BirdSetLT
+   
 
   mask_logits: False
   network:
