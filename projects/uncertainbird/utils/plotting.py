@@ -11,10 +11,10 @@ from torchmetrics.classification import (
 )
 from uncertainbird.utils.misc import compute_bin_stats
 from birdset.modules.metrics import cmAP
-from uncertainbird.modules.metrics.uncertainty import (
-    MultilabelCalibrationError,
-    TopKMultiLabelCalibrationError,
-)
+
+# NOTE: Avoid importing calibration metrics at module import time to prevent
+# potential circular import with metrics configuration. We'll import them lazily
+# inside the functions that need them.
 
 
 def plot_pr_curve(predictions, targets, ax=None):
@@ -348,6 +348,12 @@ def plot_class_frequency(targets):
 
 
 def print_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> None:
+    # Local import to avoid circular import at module level
+    from uncertainbird.modules.metrics.uncertainty import (
+        MultilabelCalibrationError,
+        TopKMultiLabelCalibrationError,
+    )
+
     num_labels = targets.shape[1]
     accuracy = MultilabelAccuracy(num_labels=num_labels)(predictions, targets)
     cmAP_metric = cmAP(num_labels=num_labels)(predictions, targets)
