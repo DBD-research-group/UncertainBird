@@ -1,11 +1,16 @@
 import pickle
 from pathlib import Path
-import numpy as np
 from typing import Literal
 import torch
 from typing import Union, Tuple, Dict, Any
 
-from uncertainbird.utils.plotting import plot_reliability_diagram
+
+from torchmetrics.functional.classification import (
+    binary_calibration_error,
+    precision,
+    recall,
+    f1_score,
+)
 
 
 def load_dump(
@@ -90,13 +95,13 @@ def prediction_statistics(
     }
 
 
-def print_classwise_statistics(
-    predictions: torch.Tensor, targets: torch.Tensor
-) -> None:
-    """Print class-wise statistics of predictions for multilabel classification.
+def class_wise_statistics(
+    predictions: torch.Tensor, targets: torch.Tensor, n_bins: int = 10
+) -> Dict[str, torch.Tensor]:
+    """Compute class-wise statistics of predictions for multilabel classification.
 
-    For each class with at least one positive target, computes and prints statistics
-    including mean, standard deviation, min, max predictions, and number of positive samples.
+    For each class with at least one positive target, computes statistics including mean,
+    standard deviation, min, max predictions, and number of positive samples.
     This is particularly useful for analyzing model behavior on imbalanced datasets.
 
     Args:
@@ -104,20 +109,30 @@ def print_classwise_statistics(
         targets: The targets tensor of shape (num_samples, num_classes) with binary labels.
 
     Returns:
-        None: This function only prints statistics and doesn't return values.
-
-    Note:
-        - Only classes with at least one positive target are analyzed
-        - Statistics are computed over all samples for each class
-        - Useful for identifying class-specific prediction patterns
-
-    Example:
-        >>> print_classwise_statistics(predictions, targets)
-        Class 0: mean: 0.1234, std: 0.0567, min: 0.0001, max: 0.9876, positive samples: 42
-        Class 1: mean: 0.5678, std: 0.1234, min: 0.0123, max: 0.9999, positive samples: 15
+        Dictionary containing class-wise statistics:
+            - mean (float): Mean prediction value for the class
+            - std (float): Standard deviation of prediction values for the class
+            - min (float): Minimum prediction value for the class
+            - max (float): Maximum prediction value for the class
+            - positive_samples (int): Number of positive samples for the class
+            - precision (float): Precision for the class
+            - recall (float): Recall for the class
+            - f1_score (float): F1 score for the class
+            - ece (float): Expected Calibration Error for the class
     """
 
     num_classes = predictions.shape[1]
+    stats = {
+        "mean": [],
+        "std": [],
+        "min": [],
+        "max": [],
+        "positive_samples": [],
+        "precision": [],
+        "recall": [],
+        "f1_score": [],
+        "ece": [],
+    }
     for class_idx in range(num_classes):
         class_preds = predictions[:, class_idx]
         class_targets = targets[:, class_idx]
@@ -128,9 +143,28 @@ def print_classwise_statistics(
             std_pred = class_preds.std().item()
             min_pred = class_preds.min().item()
             max_pred = class_preds.max().item()
-            print(
-                f"Class {class_idx}: mean: {mean_pred:.4f}, std: {std_pred:.4f}, min: {min_pred:.4f}, max: {max_pred:.4f}, positive samples: {int(class_targets.sum().item())}"
-            )
+            positive_samples = int(class_targets.sum().item())
+
+            pre = precision(class_preds, class_targets, task="binary").item()
+            rec = recall(class_preds, class_targets, task="binary").item()
+            f1 = f1_score(class_preds, class_targets, task="binary").item()
+            # Compute ECE using reliability diagram
+            ece = binary_calibration_error(
+                class_preds, class_targets, n_bins=n_bins
+            ).item()
+            stats["mean"].append(mean_pred)
+            stats["std"].append(std_pred)
+            stats["min"].append(min_pred)
+            stats["max"].append(max_pred)
+            stats["positive_samples"].append(positive_samples)
+            stats["precision"].append(pre)
+            stats["recall"].append(rec)
+            stats["f1_score"].append(f1)
+            stats["ece"].append(ece)
+    # Convert lists to tensors for easier handling
+    for key in stats:
+        stats[key] = torch.tensor(stats[key])
+    return stats
 
 
 def extract_top_k(
@@ -165,3 +199,89 @@ def extract_top_k(
     top_k_preds = predictions[:, top_k_class_indices]  #
     top_k_targets = targets[:, top_k_class_indices]  #
     return top_k_preds, top_k_targets
+
+
+def compute_bin_stats(
+    predictions: torch.Tensor, targets: torch.Tensor, n_bins: int = 10
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Compute bin statistics for reliability diagram.
+
+    Divides the prediction probabilities into `n_bins` equal-width bins and computes
+    the accuracy and confidence for each bin.
+
+    Args:
+        predictions: Tensor of shape (num_samples, num_classes) with predicted probabilities.
+        targets: Tensor of shape (num_samples, num_classes) with binary ground truth labels.
+        n_bins: Number of bins to divide the probability range [0, 1].
+    Returns:
+        bin_confidences: Tensor of shape (n_bins,) with average confidence per bin.
+        bin_accuracies: Tensor of shape (n_bins,) with accuracy per bin.
+        bin_counts: Tensor of shape (n_bins,) with number of samples
+            in each bin.
+    """
+    # Convert to torch tensors if needed and ensure correct dtypes
+    if not isinstance(predictions, torch.Tensor):
+        predictions = torch.tensor(predictions, dtype=torch.float32)
+    else:
+        predictions = predictions.float()  # Ensure predictions are float
+
+    if not isinstance(targets, torch.Tensor):
+        targets = torch.tensor(targets, dtype=torch.float32)
+    else:
+        targets = targets.float()  # Ensure targets are float for computation
+
+    # Flatten for multilabel case - treat all predictions independently
+    predictions_flat = predictions.flatten()
+    targets_flat = targets.flatten()
+
+    # Create uniform bin edges
+    bin_edges = torch.linspace(0.0, 1.0, n_bins + 1)
+
+    # Assign predictions to bins
+    bin_indices = torch.bucketize(predictions_flat, bin_edges, right=False) - 1
+    bin_indices = bin_indices.clamp(0, n_bins - 1)
+
+    # Calculate bin statistics
+    bin_confidences = []
+    bin_accuracies = []
+    bin_counts = []
+
+    for bin_idx in range(n_bins):
+        mask = bin_indices == bin_idx
+        if not mask.any():
+            continue
+
+        bin_preds = predictions_flat[mask]
+        bin_targets = targets_flat[mask]
+
+        if len(bin_preds) == 0:
+            continue
+
+        # Average confidence (predicted probability) in this bin
+        avg_confidence = bin_preds.mean().item()
+
+        # Fraction of positive outcomes (accuracy) in this bin
+        accuracy = bin_targets.float().mean().item()
+
+        # Number of samples in this bin
+        count = len(bin_preds)
+
+        bin_confidences.append(avg_confidence)
+        bin_accuracies.append(accuracy)
+        bin_counts.append(count)
+
+    if not bin_confidences:
+        # No valid bins, just plot perfect calibration line
+        ax.plot([0, 1], [0, 1], "k--", alpha=0.5, label="Perfect Calibration")
+        ax.set_xlabel("Mean Predicted Probability")
+        ax.set_ylabel("Fraction of Positives")
+        ax.set_title(title)
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        return ax
+
+    # Convert to arrays for plotting
+    bin_confidences = torch.tensor(bin_confidences)
+    bin_accuracies = torch.tensor(bin_accuracies)
+    bin_counts = torch.tensor(bin_counts)
+    return bin_confidences, bin_accuracies, bin_counts
