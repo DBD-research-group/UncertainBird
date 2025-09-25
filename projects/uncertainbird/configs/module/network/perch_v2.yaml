@@ -1,12 +1,6 @@
 model:
-  _target_: uncertainbird.modules.models.perch_v2
+  _target_: birdset.modules.models.perch_v2.PerchV2Model
   num_classes: 14795
-  num_channels: 1
-  local_checkpoint: null
-  classifier: null
-  preprocess_in_model: False
-  cache_dir: ${paths.dataset_path}/models/
-  pooling: default
   pretrain_info:
     hf_path: ${datamodule.dataset.hf_path}
     hf_name: ${datamodule.dataset.hf_name}
