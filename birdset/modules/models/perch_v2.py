@@ -92,26 +92,21 @@ class PerchV2Model(nn.Module):
         """
         Load the model from TensorFlow Hub.
         """
-        import os
 
-        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-        model_choice = "perch_v2_cpu"
-        # cudnn_version = (torch.backends.cudnn.version() % 1000) // 100
-        # if cudnn_version >= 3:
-        #     physical_devices = tf.config.list_physical_devices("GPU")
-        #     if len(physical_devices) > 0:
-        #         # tf.config.experimental.set_memory_growth(physical_devices[0], True)
-        #         import os
-        #         os.environ["CUDA_VISIBLE_DEVICES"]="0"
-        #         tf.config.experimental.set_visible_devices(
-        #         physical_devices[0], "GPU"
-        #     )
-        #         tf.config.optimizer.set_jit(True)
-        #         model_choice = 'perch_v2'
-        # else:
-        #     import os
-        #     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-        #     model_choice = 'perch_v2_cpu'
+        cudnn_version = (torch.backends.cudnn.version() % 1000) // 100
+        if cudnn_version >= 3:
+            physical_devices = tf.config.list_physical_devices("GPU")
+            if len(physical_devices) > 0:
+                # tf.config.experimental.set_memory_growth(physical_devices[0], True)
+                tf.config.experimental.set_visible_devices(physical_devices[0], "GPU")
+                tf.config.experimental.set_memory_growth(physical_devices[0], True)
+                tf.config.optimizer.set_jit(True)
+                model_choice = "perch_v2"
+        else:
+            import os
+
+            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+            model_choice = "perch_v2_cpu"
 
         perch_v2 = load_model_by_name(model_choice)
 
