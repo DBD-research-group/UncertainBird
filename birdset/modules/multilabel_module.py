@@ -1,6 +1,6 @@
 from dataclasses import asdict
 import torch
-# import wandb
+import wandb
 from typing import Callable, Literal, Type, Optional
 from torch.nn import BCEWithLogitsLoss
 from torch.nn.modules.loss import _Loss
