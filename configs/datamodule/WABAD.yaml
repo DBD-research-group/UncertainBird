@@ -1,0 +1,24 @@
+
+# WABAD
+_target_: birdset.datamodule.wabad_datamodule.WABADDataModule
+
+defaults:
+  - _self_
+  - transforms: esc_default.yaml
+  - loaders: default.yaml
+
+dataset:
+  data_dir: ${paths.dataset_path}
+  hf_path: DBD-research-group/WABAD
+  hf_name: BAM
+  use_auth_token: true  # Add this for private repos
+  trust_remote_code: true  # Add this for custom dataset scripts
+  seed: ${seed}
+  n_classes: 1192
+  n_workers: 1
+  val_split: null
+  task: ${module.task}
+  subset: null
+  sample_rate: ${module.network.sample_rate}
+  class_weights_loss: False
+  class_weights_sampler: null

@@ -17,7 +17,7 @@ root = pyrootutils.setup_root(
 
 _HYDRA_PARAMS = {
     "version_base": None,
-    "config_path": str(root / "configs"),
+    "config_path": os.path.join(root, "configs"),
     "config_name": "eval.yaml",
 }
 

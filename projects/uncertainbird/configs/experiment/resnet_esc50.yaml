@@ -5,7 +5,7 @@ defaults:
   - override /module: multiclass.yaml
   - override /module/network: resnet.yaml
   - override /callbacks: default.yaml 
-  - override /trainer: single_gpu.yaml
+  - override /trainer: default.yaml
 
 
 tags: ["esc50", "resnet", "Ye_et_al."] 
