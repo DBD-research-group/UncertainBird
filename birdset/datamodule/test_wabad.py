@@ -14,7 +14,7 @@ def main():
     # Load datamodule
     dm = WABADDataModule(
         dataset=dataset_cfg,
-        # loaders=LoadersConfig(),
+        loaders=LoadersConfig(),
     )
 
     # Prepare data (downloads from Hugging Face if needed)
