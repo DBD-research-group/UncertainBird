@@ -1,0 +1,55 @@
+# @package _global_
+defaults:
+  - override /datamodule: HSN.yaml
+  - override /module: multilabel-uncertainty.yaml
+  - override /module/network: audioprotopnet.yaml
+  - override /callbacks: default.yaml
+  - override /trainer: single_gpu.yaml
+  - override /datamodule/transforms: bird_default_multilabel.yaml
+  - override /paths: default.yaml
+  - override /hydra: default.yaml
+
+seed: 1
+train: False
+test: True
+
+trainer:
+  precision: bf16
+
+module:
+  metrics:
+    _target_: projects.uncertainbird.modules.metrics.uncertainty.NoMetricsConfig
+    num_labels: 9736  # Set this to the number of classes in BirdSetLT
+   
+
+  mask_logits: False
+  network:
+    model:
+      pretrain_info:
+        hf_path: ${datamodule.dataset.hf_path}
+        hf_name: ${datamodule.dataset.hf_name}
+        hf_pretrain_name: XCL
+        valid_test_only: False
+
+
+
+datamodule:
+  dataset:
+    dataset_name: HSN
+    val_split: null
+    class_weights_loss: null
+    class_weights_sampler: null
+    classlimit: null
+    eventlimit: null
+    # num_classes: 9736  # Override number of classes to match BirdSetLT
+  loaders:
+    test:
+      batch_size: 64
+      num_workers: 16
+
+callbacks:
+  dump_predictions:
+    _target_: projects.uncertainbird.callbacks.DumpPredictionsCallback
+    save_dir: "${paths.output_dir}/predictions"
+    filename_prefix: "test_predictions"
+    save_format: "pickle"

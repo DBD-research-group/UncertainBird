@@ -1,0 +1,31 @@
+model:
+  _target_: birdset.modules.models.birdnet.BirdNetModel
+  num_classes: 14795
+  pretrain_info:
+    hf_path: ${datamodule.dataset.hf_path}
+    hf_name: ${datamodule.dataset.hf_name}
+    hf_pretrain_name: null
+    valid_test_only: False
+
+model_name: perch_v2
+model_type: waveform
+torch_compile: False
+sample_rate: 32_000
+normalize_waveform: null
+normalize_spectrogram: null
+embedding_size: 1536
+length: 5
+
+
+
+
+
+
+
+
+
+
+
+
+
+

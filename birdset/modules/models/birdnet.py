@@ -5,8 +5,12 @@ import datasets
 import pandas as pd
 import torch
 import tensorflow as tf
+import keras
 from torch import nn
 
+
+SAMPLE_RATE = 48000
+LENGTH_IN_SAMPLES = 144000
 
 class BirdNetModel(nn.Module):
     # Constants for the model embedding size
@@ -15,7 +19,7 @@ class BirdNetModel(nn.Module):
     def __init__(
         self,
         num_classes: int,
-        model_path: str,
+        model_path: str = 'resources/birdnet',
         train_classifier: bool = False,
         restrict_logits: bool = False,
         label_path: Optional[str] = None,
@@ -38,7 +42,6 @@ class BirdNetModel(nn.Module):
         self.model_path = model_path
         self.train_classifier = train_classifier
         self.restrict_logits = restrict_logits
-        self.label_path = label_path
 
         if pretrain_info:
             self.hf_path = pretrain_info["hf_path"]
@@ -66,16 +69,49 @@ class BirdNetModel(nn.Module):
         """
         Load the model from TensorFlow Hub.
         """
-        physical_devices = tf.config.list_physical_devices("GPU")
-        tf.config.experimental.set_memory_growth(physical_devices[0], True)
-        tf.config.optimizer.set_jit(True)
-        self.model = tf.saved_model.load(self.model_path)  # Load the BirdNet model
+        cudnn_version = (torch.backends.cudnn.version() % 1000) // 100
+        if cudnn_version >= 3:
+            physical_devices = tf.config.list_physical_devices("GPU")
+            if len(physical_devices) > 0:
+                tf.config.experimental.set_memory_growth(physical_devices[0], True)
+                tf.config.optimizer.set_jit(True)
+        else:
+            import os
+            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        
+        # download from here: https://drive.google.com/file/d/1Bm8ZZAi6Teny721PdydsZhBYh7RhFvCr/view?usp=drive_link
+        self.model = tf.keras.models.load_model(
+            self.model_path + "/birdnetv2.4_keras3.keras", compile=False
+        )
+        
+        # download from here: https://drive.google.com/file/d/1v1eCKX82zg10McGUsRwS6vM7OiSCTpkg/view?usp=drive_link
+        loaded_preprocessor = tf.saved_model.load(
+            self.model_path + "/BirdNET_Preprocessor",
+        )
+        self.preprocessor = lambda x: (
+            loaded_preprocessor.signatures['serving_default'](x)['concatenate']
+            )
+        
+        all_classes = pd.read_csv(
+            self.model_path + "/BirdNET_GLOBAL_6K_V2.4_Labels.txt",
+            header=None,
+        )
+        self.classes = [s.split("_")[-1] for s in all_classes.values.squeeze()]
+        
+        self.birdnet_embeds = tf.keras.Model(
+            inputs=self.model.input,
+            outputs=self.model.layers[-3].output,
+            name="embeddings_model"
+        )
+        
+        x = keras.Input(shape=self.model.layers[-3].output.shape[1:])
+        y = self.model.layers[-2](x)
+        y = self.model.layers[-1](y)
+        self.birdnet_classifier = tf.keras.Model(x, y, name="classifier_model")
 
         if self.restrict_logits:
-            # Load the class list from the CSV file
-            pretrain_classlabels = pd.read_csv(self.label_path)
             # Extract the 'ebird2021' column as a list
-            pretrain_classlabels = pretrain_classlabels["ebird2021"].tolist()
+            pretrain_classlabels = self.classes
 
             # Load dataset information
             dataset_info = datasets.load_dataset_builder(
@@ -115,10 +151,8 @@ class BirdNetModel(nn.Module):
         Returns:
             dict: A dictionary containing 'embeddings' and 'logits' TensorFlow tensors.
         """
-        logits = self.model.signatures["basic"](inputs=input_tensor)["scores"]
-        embeddings = self.model.signatures["embeddings"](inputs=input_tensor)[
-            "embeddings"
-        ]
+        embeddings = self.birdnet_embeds(input_tensor)
+        logits = self.birdnet_classifier(embeddings)
         return {"embeddings": embeddings, "logits": logits}
 
     def forward(
@@ -185,7 +219,8 @@ class BirdNetModel(nn.Module):
             for start in start_indices:
                 end = start + max_length
                 segment = input_tensor[:, start:end]
-                output = self.run_tf_model(input_tensor=segment)
+                spectrogram = self.preprocessor(segment)
+                output = self.run_tf_model(input_tensor=spectrogram)
                 outputs.append(output)
 
             # Combine logits from both segments by taking the maximum
@@ -202,7 +237,8 @@ class BirdNetModel(nn.Module):
         else:
             # Process the single input_tensor as usual
             # Run the model and get the outputs using the optimized TensorFlow function
-            outputs = self.run_tf_model(input_tensor=input_tensor)
+            spectrogram = self.preprocessor(input_tensor)
+            outputs = self.run_tf_model(input_tensor=spectrogram)
 
             # Extract embeddings and logits, convert them to PyTorch tensors
             embeddings = torch.from_numpy(outputs["embeddings"].numpy())
@@ -221,3 +257,4 @@ class BirdNetModel(nn.Module):
             logits = full_logits
 
         return embeddings, logits
+

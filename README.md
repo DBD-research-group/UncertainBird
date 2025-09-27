@@ -25,13 +25,25 @@ You can also use the [devcontainer](https://code.visualstudio.com/docs/devcontai
 git submodule update --init --recursive
 ```
 
-And install python dependencies with [poetry](https://python-poetry.org/).
+And install python dependencies with [uv](https://docs.astral.sh/uv/).
 ```
-poetry install
-
-eval $(poetry env activate)
+uv sync
 ```
 
+Install TF specific dependencies:
+```bash
+uv pip -r projects/UncertainBird/tf-requirements.txt
+```
+Activate virtual environment:
+```
+eval ./venv/bin/activate
+```
+
+## Dump predictions for calibration analysis
+
+```bash
+./projects/UncertainBird/scripts/dump-predictions.sh --models <model1,model2,...> --dataset <dataset_name> --batch_size <batch_size> --gpus <gpu_id>
+```
 
 ## Run experiments
 
