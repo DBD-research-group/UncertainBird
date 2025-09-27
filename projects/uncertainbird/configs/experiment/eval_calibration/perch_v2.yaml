@@ -27,7 +27,7 @@ module:
 
   metrics:
     _target_: projects.uncertainbird.modules.metrics.uncertainty.NoMetricsConfig
-    num_labels: 21  # Number of classes of Perch_v2 
+    num_labels: 9736  # Number of classes of BirdSet XCL to be comatible with other models
    
   network:
     model:
@@ -56,8 +56,8 @@ datamodule:
     # num_classes: 9736  # Override number of classes to match BirdSetLT
   loaders:
     test:
-      batch_size: 2048
-      num_workers: 32
+      batch_size: 256
+      num_workers: 16
 
 callbacks:
   dump_predictions:

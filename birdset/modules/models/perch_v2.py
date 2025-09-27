@@ -76,6 +76,7 @@ class PerchV2Model(nn.Module):
         if pretrain_info:
             self.hf_path = pretrain_info.hf_path
             self.hf_name = pretrain_info.hf_name
+            self.hf_pretrain_name = pretrain_info.hf_pretrain_name
         else:
             self.hf_path = None
             self.hf_name = None
@@ -122,7 +123,7 @@ class PerchV2Model(nn.Module):
 
             # Load dataset information
             dataset_info = datasets.load_dataset_builder(
-                self.hf_path, self.hf_name
+                self.hf_path, self.hf_pretrain_name
             ).info
             dataset_classlabels = dataset_info.features["ebird_code"].names
 
@@ -197,7 +198,7 @@ class PerchV2Model(nn.Module):
         if self.class_mask:
             # Initialize full_logits to a large negative value for penalizing non-present classes
             full_logits = torch.full(
-                (logits.shape[0], self.num_classes),
+                (logits.shape[0], 9736),  # Assuming 9736 is the total number of classes
                 -10.0,
                 device=logits.device,
                 dtype=logits.dtype,
