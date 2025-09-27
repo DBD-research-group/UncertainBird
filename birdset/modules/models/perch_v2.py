@@ -4,6 +4,8 @@ from typing import Optional, Tuple
 import datasets
 import pandas as pd
 import tensorflow as tf
+import tensorflow_hub as hub
+
 import torch
 from torch import nn
 
@@ -47,7 +49,7 @@ class PerchV2Model(nn.Module):
         num_classes: int,
         train_classifier: bool = False,
         restrict_logits: bool = True,
-        label_path: Optional[str] = None,
+        gpu_to_use: Optional[int] = 0,
         pretrain_info: Optional[PretrainInfoConfig] = None,
     ) -> None:
         """
@@ -69,6 +71,7 @@ class PerchV2Model(nn.Module):
         self.num_classes = num_classes
         self.train_classifier = train_classifier
         self.restrict_logits = restrict_logits
+        self.gpu_to_use = gpu_to_use
 
         if pretrain_info:
             self.hf_path = pretrain_info.hf_path
@@ -77,46 +80,45 @@ class PerchV2Model(nn.Module):
             self.hf_path = None
             self.hf_name = None
 
-        self.classifier = nn.Sequential(
-            nn.Linear(self.EMBEDDING_SIZE, 128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, self.num_classes),
-        )
+        self.model = self._load_model()
 
-        self.load_model()
-
-    def load_model(self) -> None:
+    def _load_model(self) -> None:
         """
         Load the model from TensorFlow Hub.
         """
-
-        cudnn_version = (torch.backends.cudnn.version() % 1000) // 100
-        if cudnn_version >= 3:
-            physical_devices = tf.config.list_physical_devices("GPU")
-            if len(physical_devices) > 0:
-                # tf.config.experimental.set_memory_growth(physical_devices[0], True)
-                tf.config.experimental.set_visible_devices(physical_devices[0], "GPU")
-                tf.config.experimental.set_memory_growth(physical_devices[0], True)
-                tf.config.optimizer.set_jit(True)
-                model_choice = "perch_v2"
+        # self.model = hub.load(model_url)
+        # with tf.device('/CPU:0'):
+        # self.model = hub.load(model_url)
+        physical_devices = tf.config.list_physical_devices("GPU")
+        if (
+            self.gpu_to_use is not None
+        ):  # If no gpu is specified just choose the first one that is available (Implemented for sweeps)
+            tf.config.experimental.set_visible_devices(
+                physical_devices[self.gpu_to_use], "GPU"
+            )
+            tf.config.experimental.set_memory_growth(
+                physical_devices[self.gpu_to_use], True
+            )
         else:
-            import os
+            tf.config.experimental.set_visible_devices(physical_devices[0], "GPU")
+            tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
-            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-            model_choice = "perch_v2_cpu"
+        tf.config.optimizer.set_jit(True)
+        model = hub.load(
+            "https://www.kaggle.com/models/google/bird-vocalization-classifier/tensorFlow2/perch_v2/2"
+        )
+        print(model.signatures.keys())  # usually ['serving_default']
 
-        perch_v2 = load_model_by_name(model_choice)
-
-        self.model = perch_v2.embed
-
-        self.class_label_key = "label"
-
+        # Try to print the output structure
+        output = model.signatures["serving_default"]
+        print(output.structured_outputs)
         if self.restrict_logits:
+            # Load the class list from the CSV file
+            pretrain_classlabels = pd.read_csv(
+                "/workspace/projects/uncertainbird/resources/perch_v2_ebird_classes.csv"
+            )
             # Extract the 'ebird2021' column as a list
-            pretrain_classlabels = perch_v2.class_list["labels"].classes
+            pretrain_classlabels = pretrain_classlabels["ebird2021"].tolist()
 
             # Load dataset information
             dataset_info = datasets.load_dataset_builder(
@@ -144,6 +146,22 @@ class PerchV2Model(nn.Module):
             ]
             if missing_labels:
                 logging.warning(f"Missing labels in pretrained model: {missing_labels}")
+        return model
+
+    @tf.function  # Decorate with tf.function to compile into a callable TensorFlow graph
+    def run_tf_model(self, input_values: tf.Tensor) -> dict:
+        """
+        Run the TensorFlow model and get outputs.
+
+        Args:
+            input_values (tf.Tensor): The input tensor for the model.
+
+        Returns:
+            dict: A dictionary of model outputs.
+        """
+
+        return self.model.signatures["serving_default"](inputs=input_values)
+        # return self.model.batch_embed(input_values)
 
     def forward(
         self, input_values: torch.Tensor, labels: Optional[torch.Tensor] = None
@@ -163,25 +181,29 @@ class PerchV2Model(nn.Module):
             input_values = input_values.squeeze(1)
 
         device = input_values.device  # Get the device of the input tensor
+        input_values = (
+            input_values.cpu().numpy()
+        )  # Move the tensor to the CPU and convert it to a NumPy array.
 
-        # Move the tensor to the CPU and convert it to a NumPy array.
-        input_values = input_values.cpu().numpy()
+        input_values = input_values.reshape([-1, input_values.shape[-1]])
 
-        input_values = tf.convert_to_tensor(input_values, dtype=tf.float32)
+        # Run the model and get the outputs using the optimized TensorFlow function
+        outputs = self.run_tf_model(input_values=input_values)
 
-        results = self.model(input_values)
+        # Extract logits, convert them to PyTorch tensors
+        logits = torch.from_numpy(outputs["label"].numpy())
+        logits = logits.to(device)
 
-        if self.train_classifier:
-            embeddings = results.embeddings
-            embeddings = embeddings.to(device)
-            # Pass embeddings through the classifier to get the final output
-            output = self.classifier(embeddings)
-        else:
-            output = torch.Tensor(results.logits[self.class_label_key]).squeeze()
+        if self.class_mask:
+            # Initialize full_logits to a large negative value for penalizing non-present classes
+            full_logits = torch.full(
+                (logits.shape[0], self.num_classes),
+                -10.0,
+                device=logits.device,
+                dtype=logits.dtype,
+            )
+            # Extract valid logits using indices from class_mask and directly place them
+            full_logits[:, self.class_indices] = logits[:, self.class_mask]
+            logits = full_logits
 
-        return output
-
-
-# p = PerchV2Model(14795)
-# samples = torch.zeros(160_000)
-# logits = p(samples)
+        return logits
