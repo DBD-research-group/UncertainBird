@@ -8,7 +8,7 @@ defaults:
   - override /trainer: single_gpu.yaml
 
 
-tags: ["esc50", "resnet", "Ye_et_al."] 
+tags: ["esc50", "resnet", "Ye_et_al"] 
 seed: 1
 
 logger:
