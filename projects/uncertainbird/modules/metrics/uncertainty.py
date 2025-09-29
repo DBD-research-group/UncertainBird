@@ -369,7 +369,7 @@ def _mcs_compute(
     if (
         norm == "under"
     ):  # only sum up negative values leading to quantify under-confidence
-        ce = torch.sum(torch.clamp_max((conf_bin - acc_bin), 0) * prop_bin)
+        ce = torch.abs(torch.sum(torch.clamp_max((conf_bin - acc_bin), 0) * prop_bin))
     if norm == "over":  # only sum up positive values
         ce = torch.sum(torch.clamp_min((conf_bin - acc_bin), 0) * prop_bin)
     return ce
