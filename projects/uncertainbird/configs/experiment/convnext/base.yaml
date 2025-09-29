@@ -52,7 +52,7 @@ datamodule:
 
 callbacks:
   dump_predictions:
-    _target_: projects.uncertainbird.callbacks.DumpPredictionsCallback
+    _target_: uncertainbird.callbacks.DumpPredictionsCallback
     save_dir: "${paths.output_dir}/predictions"
     filename_prefix: "masked_test_predictions"
     save_format: "pickle"

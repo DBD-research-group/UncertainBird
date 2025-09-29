@@ -26,7 +26,7 @@ logger:
 module:
 
   metrics:
-    _target_: projects.uncertainbird.modules.metrics.uncertainty.NoMetricsConfig
+    _target_: uncertainbird.modules.metrics.uncertainty.NoMetricsConfig
     num_labels: 9736  # Number of classes of BirdSet XCL to be comatible with other models
    
   network:
@@ -61,7 +61,7 @@ datamodule:
 
 callbacks:
   dump_predictions:
-    _target_: projects.uncertainbird.callbacks.DumpPredictionsCallback
+    _target_: uncertainbird.callbacks.DumpPredictionsCallback
     save_dir: "${paths.output_dir}/predictions"
     filename_prefix: "masked_test_predictions"
     save_format: "pickle"
