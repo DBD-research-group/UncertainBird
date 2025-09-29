@@ -196,10 +196,10 @@ class PerchV2Model(nn.Module):
         logits = logits.to(device)
 
         if self.class_mask:
-            # Initialize full_logits to a large negative value for penalizing non-present classes
+            # Initialize full_logits to 0 for all classes
             full_logits = torch.full(
                 (logits.shape[0], 9736),  # Assuming 9736 is the total number of classes
-                -10.0,
+                0.0,
                 device=logits.device,
                 dtype=logits.dtype,
             )
