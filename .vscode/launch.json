@@ -8,10 +8,10 @@
             "name": "Debug UncertainBird",
             "type": "debugpy",
             "request": "launch",
-            // "program": "./birdset/train.py --config-path '../projects/uncertainbird/configs' --config-dir 'configs' 'logger=wandb_UncertainBird'",
-            "program": "${file}",
+            "program": "./birdset/train.py --config-path '../projects/uncertainbird/configs' --config-dir 'configs' 'logger=wandb_UncertainBird'",
+            // "program": "${file}",
             "console": "integratedTerminal",
-            // "args": "${command:pickArgs}",
+            "args": "${command:pickArgs}",
             "justMyCode": false
         },
         {
