@@ -32,7 +32,7 @@ uv sync
 
 Install TF specific dependencies:
 ```bash
-uv pip -r projects/UncertainBird/tf-requirements.txt
+uv pip install -r projects/UncertainBird/tf-requirements.txt
 ```
 Activate virtual environment:
 ```
