@@ -33,17 +33,12 @@ eval $(poetry env activate)
 ```
 
 
-## Run experiments
+## Dump predictions
 
-Our experiments are defined in the `projects/UncertainBird/configs/experiment/` folder. To run an experiment, use the following command in the directory of the repository:
+To dump predictions for a trained model, use the following command. It will save the predictions under logs/predictions/<model_name>/<dataset_name/
 
-``` bash
-./projects/UncertainBird/train.sh experiment="EXPERIMENT_PATH"
-```
-
-E.g.
-``` bash
-./projects/uncertainbird/train.sh experiment=convnext/masked   
+```bash
+./projects/uncertainbird/dump_predictions.sh --models <model_name> --datasets <HSN,UHH,..> --gpu <gpu_id> --batch_size <batch_size>
 ```
 
 ## Project structure
