@@ -6,8 +6,8 @@ work_dir: ${hydra:runtime.cwd}
 output_dir: ${hydra:runtime.output_dir}
 
 # data directory
-#dataset_path: ${paths.root_dir}/data_birdset
-dataset_path: /media/siriussound/Extreme SSD/Recordings/terrestrial/Birds/BirdSet
+dataset_path: ${paths.root_dir}/data_birdset
+# dataset_path: /media/siriussound/Extreme SSD/Recordings/terrestrial/Birds/BirdSet
 model_path: ${paths.root_dir}/data_birdset/models/
 background_path: ${paths.root_dir}/data_birdset/background_noise/
 

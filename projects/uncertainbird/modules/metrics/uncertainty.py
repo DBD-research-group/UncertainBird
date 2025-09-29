@@ -1,4 +1,3 @@
-import logging
 import torch
 from torch import Tensor
 from typing import Literal, Optional, Union
@@ -6,8 +5,6 @@ from torchmetrics import Metric, MetricCollection, MaxMetric
 from torchmetrics.classification import AUROC, BinaryCalibrationError
 from torchmetrics.functional.classification import binary_calibration_error
 from torchmetrics.functional.classification.calibration_error import (
-    _binary_calibration_error_arg_validation,
-    _binary_calibration_error_tensor_validation,
     _binary_confusion_matrix_format,
     _binary_calibration_error_update,
     _binning_bucketize,

@@ -21,3 +21,9 @@ nvidia-nvjitlink-cu12==12.5.40
 nvidia-nvjpeg-cu12==12.3.2.38
 nvidia-nvml-dev-cu12==12.5.39
 nvidia-nvtx-cu12==12.5.39
+tensorflow==2.20
+keras==3.11
+kagglehub==0.3.13
+tensorflow-hub==0.16.1
+
+

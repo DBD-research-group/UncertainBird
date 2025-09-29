@@ -9,7 +9,6 @@ from torchmetrics.classification import (
     MultilabelF1Score,
     MultilabelAUROC,
 )
-from uncertainbird.modules.metrics.uncertainty import MiscalibrationScore
 from uncertainbird.utils.misc import compute_bin_stats
 from birdset.modules.metrics import cmAP
 
@@ -354,6 +353,8 @@ def print_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> None:
         MultilabelCalibrationError,
         TopKMultiLabelCalibrationError,
     )
+    from uncertainbird.modules.metrics.uncertainty import MiscalibrationScore
+
 
     num_labels = targets.shape[1]
     accuracy = MultilabelAccuracy(num_labels=num_labels)(predictions, targets)

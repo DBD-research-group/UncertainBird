@@ -47,13 +47,9 @@ dependencies = [
     "pytest-html>=4.1.1",
     "huggingface-hub>=0.28.1",
     "lightning-uq-box>=0.2.0",
-    "tensorflow==2.20",
-    "keras==3.11",
     "ml-collections>=1.1.0",
-    "kagglehub>=0.3.13",
     "etils>=1.13.0",
     "importlib-resources>=6.5.2",
-    "tensorflow-hub>=0.16.1",
 ]
 
 [project.optional-dependencies]

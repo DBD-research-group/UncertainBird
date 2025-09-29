@@ -12,9 +12,6 @@ from torchmetrics.functional.classification import (
     f1_score,
 )
 
-from uncertainbird.modules.metrics.uncertainty import binary_miscalibration_score
-
-
 def load_dump(
     path: Union[str, Path], print_stats: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]:
@@ -156,15 +153,6 @@ def class_wise_statistics(
             # Compute ECE using reliability diagram
             ece = binary_calibration_error(
                 class_preds, class_targets, n_bins=n_bins
-            ).item()
-            mcs = binary_miscalibration_score(
-                class_preds, class_targets, n_bins=n_bins
-            ).item()
-            ece_under = binary_miscalibration_score(
-                class_preds, class_targets, n_bins=n_bins, norm="under"
-            ).item()
-            ece_over = binary_miscalibration_score(
-                class_preds, class_targets, n_bins=n_bins, norm="over"
             ).item()
             stats["mean"].append(mean_pred)
             stats["std"].append(std_pred)
