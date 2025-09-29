@@ -1,10 +1,14 @@
-import logging
 import torch
 from torch import Tensor
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 from torchmetrics import Metric, MetricCollection, MaxMetric
 from torchmetrics.classification import AUROC, BinaryCalibrationError
 from torchmetrics.functional.classification import binary_calibration_error
+from torchmetrics.functional.classification.calibration_error import (
+    _binary_confusion_matrix_format,
+    _binary_calibration_error_update,
+    _binning_bucketize,
+)
 from torchmetrics.utilities.data import dim_zero_cat
 
 
@@ -132,7 +136,7 @@ class MultilabelCalibrationError(BinaryCalibrationError):
         multilabel_average: Optional[
             Literal["marginal", "weighted", "global"]
         ] = "marginal",
-        **kwargs
+        **kwargs,
     ):
         super().__init__(n_bins, norm, ignore_index, validate_args, **kwargs)
         self.multilabel_average = multilabel_average
@@ -280,7 +284,7 @@ class TopKMultiLabelCalibrationError(MultilabelCalibrationError):
         criterion: Literal[
             "probability", "predicted class", "target class"
         ] = "target class",
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             n_bins, norm, ignore_index, validate_args, multilabel_average, **kwargs
@@ -298,6 +302,176 @@ class TopKMultiLabelCalibrationError(MultilabelCalibrationError):
         return multilabel_calibration_error(
             topk_confidences,
             topk_accuracies,
+            n_bins=self.n_bins,
+            norm=self.norm,
+            ignore_index=self.ignore_index,
+            validate_args=self.validate_args,
+            multilabel_average=self.multilabel_average,
+        )
+
+
+def _mcs_compute(
+    confidences: Tensor,
+    accuracies: Tensor,
+    bin_boundaries: Union[Tensor, int],
+    norm: Literal["l1", "l2", "max", "over", "under"] = "l1",
+    debias: bool = False,
+) -> Tensor:
+    """Compute the calibration error given the provided bin boundaries and norm.
+
+    Args:
+        confidences: The confidence (i.e. predicted prob) of the top1 prediction.
+        accuracies: 1.0 if the top-1 prediction was correct, 0.0 otherwise.
+        bin_boundaries: Bin boundaries separating the ``linspace`` from 0 to 1.
+        norm: Norm function to use when computing calibration error. Defaults to "l1".
+        debias: Apply debiasing to L2 norm computation as in
+            `Verified Uncertainty Calibration`_. Defaults to False.
+
+    Raises:
+        ValueError: If an unsupported norm function is provided.
+
+    Returns:
+        Tensor: Calibration error scalar.
+
+    """
+    if isinstance(bin_boundaries, int):
+        bin_boundaries = torch.linspace(
+            0, 1, bin_boundaries + 1, dtype=confidences.dtype, device=confidences.device
+        )
+
+    if norm not in {"l1", "l2", "max", "over", "under"}:
+        raise ValueError(
+            f"Argument `norm` is expected to be one of 'l1', 'l2', 'max' but got {norm}"
+        )
+
+    with torch.no_grad():
+        acc_bin, conf_bin, prop_bin = _binning_bucketize(
+            confidences, accuracies, bin_boundaries
+        )
+
+    if norm == "l1":
+        return torch.sum((conf_bin - acc_bin) * prop_bin)
+    if norm == "max":
+        ce = torch.max(conf_bin - acc_bin)
+    if norm == "l2":
+        ce = torch.sum(torch.pow(conf_bin - acc_bin, 2) * prop_bin)
+        # NOTE: debiasing is disabled in the wrapper functions. This implementation differs from that in sklearn.
+        if debias:
+            # the order here (acc_bin - 1 ) vs (1 - acc_bin) is flipped from
+            # the equation in Verified Uncertainty Prediction (Kumar et al 2019)/
+            debias_bins = (acc_bin * (acc_bin - 1) * prop_bin) / (
+                prop_bin * accuracies.size()[0] - 1
+            )
+            ce += torch.sum(
+                torch.nan_to_num(debias_bins)
+            )  # replace nans with zeros if nothing appeared in a bin
+        return torch.sqrt(ce) if ce > 0 else torch.tensor(0)
+    if (
+        norm == "under"
+    ):  # only sum up negative values leading to quantify under-confidence
+        ce = torch.abs(torch.sum(torch.clamp_max((conf_bin - acc_bin), 0) * prop_bin))
+    if norm == "over":  # only sum up positive values
+        ce = torch.sum(torch.clamp_min((conf_bin - acc_bin), 0) * prop_bin)
+    return ce
+
+
+def binary_miscalibration_score(
+    preds: Tensor,
+    target: Tensor,
+    n_bins: int = 15,
+    norm: Literal["l1", "l2", "max", "over", "under"] = "l1",
+    validate_args: bool = False,
+    ignore_index: Optional[int] = None,
+) -> Tensor:
+    preds, target = _binary_confusion_matrix_format(
+        preds, target, threshold=0.0, ignore_index=ignore_index, convert_to_labels=False
+    )
+    confidences, accuracies = _binary_calibration_error_update(preds, target)
+    return _mcs_compute(confidences, accuracies, n_bins, norm)
+
+
+def multilabel_miscalibration_score(
+    preds: Tensor,
+    target: Tensor,
+    n_bins: int = 15,
+    norm: Literal["l1", "l2", "max", "over", "under"] = "l1",
+    ignore_index: Optional[int] = None,
+    validate_args: bool = True,
+    multilabel_average: Optional[
+        Literal["marginal", "weighted", "global"]
+    ] = "marginal",
+) -> Tensor:
+
+    if multilabel_average not in ("marginal", "weighted", "global"):
+        raise ValueError(
+            "multilabel_average must be one of 'marginal', 'weighted', or 'global'"
+        )
+    if multilabel_average == "global":
+        preds = preds.flatten().float()
+        target = target.flatten().float()
+        ece = binary_miscalibration_score(
+            preds,
+            target,
+            n_bins=n_bins,
+            norm=norm,
+            ignore_index=ignore_index,
+            validate_args=validate_args,
+        )
+    elif multilabel_average == "marginal" or multilabel_average == "weighted":
+        ece_per_class = []
+        positives_per_class = []
+        num_classes = preds.shape[1]
+        for class_idx in range(num_classes):
+            class_preds = preds[:, class_idx].float()
+            class_target = target[:, class_idx].float()
+            ece_class = binary_miscalibration_score(
+                class_preds,
+                class_target,
+                n_bins=n_bins,
+                norm=norm,
+                ignore_index=ignore_index,
+                validate_args=validate_args,
+            )
+            ece_per_class.append(ece_class)
+            positives_per_class.append(class_target.sum().item())
+        if multilabel_average == "weighted":
+            ece = sum(e * p for e, p in zip(ece_per_class, positives_per_class)) / (
+                sum(positives_per_class)
+            )
+        else:  # 'marginal'
+            ece = torch.stack(ece_per_class).mean()
+    return ece
+
+
+class MiscalibrationScore(MultilabelCalibrationError):
+
+    def __init__(
+        self,
+        n_bins: int = 15,
+        norm: Literal["l1", "over", "under"] = "l1",
+        ignore_index: Optional[int] = None,
+        validate_args: bool = False,
+        multilabel_average: Optional[
+            Literal["marginal", "weighted", "global"]
+        ] = "marginal",
+        **kwargs,
+    ):
+        super().__init__(
+            n_bins,
+            norm,
+            ignore_index,
+            validate_args=False,
+            multilabel_average=multilabel_average,
+            **kwargs,
+        )
+
+    def compute(self) -> Tensor:
+        confidences = dim_zero_cat(self.confidences)
+        accuracies = dim_zero_cat(self.accuracies)
+
+        return multilabel_miscalibration_score(
+            confidences,
+            accuracies,
             n_bins=self.n_bins,
             norm=self.norm,
             ignore_index=self.ignore_index,

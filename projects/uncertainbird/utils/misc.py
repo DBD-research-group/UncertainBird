@@ -12,7 +12,6 @@ from torchmetrics.functional.classification import (
     f1_score,
 )
 
-
 def load_dump(
     path: Union[str, Path], print_stats: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]:
@@ -132,6 +131,9 @@ def class_wise_statistics(
         "recall": [],
         "f1_score": [],
         "ece": [],
+        "mcs": [],
+        "ece_under": [],
+        "ece_over": [],
     }
     for class_idx in range(num_classes):
         class_preds = predictions[:, class_idx]
