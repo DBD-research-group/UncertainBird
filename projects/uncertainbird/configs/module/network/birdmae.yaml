@@ -1,0 +1,26 @@
+model:
+  _target_: uncertainbird.modules.models.birdmae.BirdMAE
+  num_classes: 9736
+
+model_name: birdmae
+model_type: waveform
+torch_compile: False
+sample_rate: 32_000
+normalize_waveform: null
+normalize_spectrogram: null
+embedding_size: 
+length: 5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
