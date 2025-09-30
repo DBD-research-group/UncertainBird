@@ -29,11 +29,13 @@ class DumpPredictionsCallback(Callback):
         save_dir: str = "predictions",
         filename_prefix: str = "test_predictions",
         save_format: str = "pickle",
+        save_logits: bool = True,
     ):
         super().__init__()
         self.save_dir = Path(save_dir)
         self.filename_prefix = filename_prefix
         self.save_format = save_format
+        self.save_logits = save_logits
 
         # Ensure save directory exists
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +75,10 @@ class DumpPredictionsCallback(Callback):
                 # Move to CPU and detach from computation graph
                 preds_cpu = preds.detach().cpu()
                 targets_cpu = targets.detach().cpu()
+
+                # If we don't want logits, apply the output activation
+                if not self.save_logits and hasattr(pl_module, "output_activation"):
+                    preds_cpu = pl_module.output_activation(preds_cpu)
 
                 self.test_predictions.append(preds_cpu)
                 self.test_targets.append(targets_cpu)
