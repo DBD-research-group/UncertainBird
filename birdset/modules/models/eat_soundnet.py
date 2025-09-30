@@ -244,7 +244,7 @@ class SoundNet(nn.Module):
             )
 
     def load_state_dict_from_file(self, file_path, model_name="model"):
-        state_dict = torch.load(file_path, map_location=self.device)["state_dict"]
+        state_dict = torch.load(file_path, map_location=self.device, weights_only=False)["state_dict"]
         # select only models where the key starts with `model.` + model_name + `.`
         state_dict = {
             key: weight
