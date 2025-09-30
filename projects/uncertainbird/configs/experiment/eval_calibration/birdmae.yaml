@@ -42,8 +42,8 @@ datamodule:
     # num_classes: 9736  # Override number of classes to match BirdSetLT
   loaders:
     test:
-      batch_size: 64
-      num_workers: 16
+      batch_size: 256
+      num_workers: 32
 
 callbacks:
   dump_predictions:
