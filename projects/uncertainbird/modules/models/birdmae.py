@@ -25,8 +25,7 @@ class BirdMAE(nn.Module):
         # Load model + feature extractor from the checkpoint (requires trust_remote_code=True)
         self.model = AutoModelForSequenceClassification.from_pretrained(
             "DBD-research-group/BirdMAE-XCL",
-            trust_remote_code=True,
-            num_labels=9736,
+            trust_remote_code=True
         )
         self.feature_extractor = AutoFeatureExtractor.from_pretrained(
             "DBD-research-group/BirdMAE-XCL",
@@ -35,19 +34,22 @@ class BirdMAE(nn.Module):
         self.config = self.model.config
         self.pretrain_info = pretrain_info
 
-        # load class_mask as labels might not match exactly
-        # Load the class list from the CSV file
-        pretrain_classlabels = list(self.config.id2label.values())
 
+        # pretrain class labels
+        pretrain_classlabels = self.config.id2label.values()
         # Load dataset information
         dataset_info = datasets.load_dataset_builder(
-            self.pretrain_info.hf_path, self.pretrain_info.hf_name
+            self.pretrain_info.hf_path, self.pretrain_info.hf_pretrain_name
         ).info
         dataset_classlabels = dataset_info.features["ebird_code"].names
 
+        # build label2id mapping for dataset class labels from self.config.id2label
+        self.config.label2id = {label: idx for idx, label in self.config.id2label.items()}
+
+
         # Create the class mask
         self.class_mask = [
-            pretrain_classlabels.index(label)
+            self.config.label2id[label]
             for label in dataset_classlabels
             if label in pretrain_classlabels
         ]
@@ -57,12 +59,6 @@ class BirdMAE(nn.Module):
             if label in pretrain_classlabels
         ]
 
-        # Log missing labels
-        missing_labels = [
-            label for label in dataset_classlabels if label not in pretrain_classlabels
-        ]
-        if missing_labels:
-            logging.warning(f"Missing labels in pretrained model: {missing_labels}")
 
     def preprocess(self, waveform: torch.Tensor):
         """
@@ -111,13 +107,11 @@ class BirdMAE(nn.Module):
         # Return logits tensor (standard HF naming); fallback to raw outputs if absent
         if hasattr(outputs, "logits"):
             logits = outputs.logits
+
             if self.class_mask:
                 # Initialize full_logits to 0 for all classes
                 full_logits = torch.full(
-                    (
-                        logits.shape[0],
-                        9736,
-                    ),  # Assuming 9736 is the total number of classes
+                    (logits.shape[0], 9736),  # Assuming 9736 is the total number of classes
                     0.0,
                     device=logits.device,
                     dtype=logits.dtype,
