@@ -1,0 +1,56 @@
+# @package _global_
+#package global is neccessary!
+defaults:
+  - override /datamodule: HSN.yaml
+  - override /module: multilabel.yaml
+  - override /module/network: convnext.yaml
+  - override /callbacks: default.yaml 
+  - override /trainer: single_gpu.yaml
+
+
+tags: ["HSN", "convnext", ] 
+seed: 1
+train: True
+test: True
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: "HSN"
+    mode: online
+    version: HSN_resnet_${seed}_${start_time}
+
+callbacks:
+  early_stopping:
+    patience: 50
+    min_delta: 5e-10
+    monitor: "val/mAP"
+  model_checkpoint:
+    monitor: "val/mAP" 
+    mode : "max"
+  dump_predictions:
+    _target_: projects.uncertainbird.callbacks.DumpPredictionsCallback
+    save_dir: "${paths.output_dir}/predictions"
+    filename_prefix: "masked_test_predictions"
+    save_format: "pickle"
+    save_logits: true
+
+trainer:
+  min_epochs: 1
+  max_epochs: 50
+    fast_dev_run: 1
+  
+
+
+datamodule:
+  dataset:
+    task: multilabel 
+  loaders:
+    train:
+      batch_size: 64
+      num_workers: 16
+    valid:
+      batch_size: 64
+      num_workers: 16
+    test:
+      batch_size: 16
