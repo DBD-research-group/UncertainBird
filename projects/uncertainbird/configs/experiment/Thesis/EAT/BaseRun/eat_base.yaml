@@ -32,7 +32,7 @@ module:
   network:
     torch_compile: False
     model:
-      local_checkpoint: /workspace/projects/uncertainbird/configs/experiment/Thesis/EAT/BaseRun/checkpoint-20_3.ckpt
+      local_checkpoint: /workspace/projects/uncertainbird/configs/experiment/Thesis/EAT/BaseRun/checkpoint-20_4.ckpt
       pretrain_info:
         hf_path: DBD-research-group/BirdSet
         hf_name: HSN
