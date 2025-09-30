@@ -1,0 +1,69 @@
+# @package _global_
+#package global is neccessary!
+defaults:
+  - override /datamodule: /inference/HSN_inf.yaml
+  - override /module: multilabel.yaml
+  - override /module/network: eat_m_soundnet.yaml
+  - override /callbacks: default.yaml 
+  - override /trainer: single_gpu.yaml
+  - override /paths: default.yaml
+  - override /hydra: default.yaml
+
+tags: ["HSN", "resnet50", ] 
+seed: 1
+train: True
+test: True
+# MCTest_T: 10
+# MCTest: True
+# MCTest_threshold: 0.5
+# mcd_p: 0.2
+ckpt_path: /workspace/projects/uncertainbird/configs/experiment/Thesis/EAT/Ensemble/eat_HSN_18.ckpt
+#ckpt_path:/workspace/logs/train/runs/HSN/eat/2025-08-17_134438/callback_checkpoints/eat_HSN_08.ckpt
+
+
+logger:
+  wandb:
+    tags: ${tags}
+    group: "HSN"
+    mode: offline
+    version: HSN_resnet_${seed}_${start_time}
+
+callbacks:
+  early_stopping:
+    patience: 50
+    min_delta: 5e-10
+    monitor: "val/mAP"
+  model_checkpoint:
+    monitor: "val/mAP" 
+    mode : "max"
+
+  dump_predictions:
+    _target_: projects.uncertainbird.callbacks.DumpPredictionsCallback
+    save_dir: "${paths.output_dir}/predictions"
+    filename_prefix: "masked_test_predictions"
+    save_format: "pickle"
+    save_logits: true
+
+
+trainer:
+  min_epochs: 1
+  max_epochs: 20
+  
+
+
+datamodule:
+  dataset:
+    task: multilabel 
+  loaders:
+    train:
+      batch_size: 64
+      num_workers: 16
+    valid:
+      batch_size: 64
+      num_workers: 16
+    test:
+      batch_size: 64
+      num_workers: 24
+
+
+

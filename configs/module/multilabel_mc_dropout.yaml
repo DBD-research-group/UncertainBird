@@ -1,0 +1,54 @@
+module:
+  # === LightningModule at the ROOT ===
+  _target_: birdset.modules.models.resnet50_mcdropout_multilabel_uqbox.build_model_from_config
+
+  # train.py sets this before model instantiation
+  num_labels: ${module.metrics.num_labels}
+
+  # our LightningModule params
+  num_input_channels: 1
+  dropout_p_conv: 0.1
+  dropout_p_head: 0.1
+  mc_samples: 10
+  ece_bins: 10
+  threshold: 0.5
+  pretrained_backbone: true
+  optimizer_name: adamw
+
+  # === DUPLICATES for scripts that instantiate child nodes ===
+  model:
+    _target_: birdset.modules.models.resnet50_mcdropout_multilabel_uqbox.build_model_from_config
+    num_labels: ${module.metrics.num_labels}
+    num_input_channels: 1
+    dropout_p_conv: 0.1
+    dropout_p_head: 0.1
+    mc_samples: 10
+    ece_bins: 10
+    threshold: 0.5
+    pretrained_backbone: true
+    optimizer_name: adamw
+
+  module:
+    _target_: birdset.modules.models.resnet50_mcdropout_multilabel_uqbox.build_model_from_config
+    num_labels: ${module.metrics.num_labels}
+    num_input_channels: 1
+    dropout_p_conv: 0.1
+    dropout_p_head: 0.1
+    mc_samples: 10
+    ece_bins: 10
+    threshold: 0.5
+    pretrained_backbone: true
+    optimizer_name: adamw
+
+  # legacy fields your datamodule/logger expect under module.network.*
+  network:
+    model:
+      _target_: torch.nn.Identity
+    model_name: resnet50
+    model_type: vision
+    sample_rate: 32000
+    normalize_waveform: null
+    normalize_spectrogram: true
+
+  # train.py does: cfg.module.metrics["num_labels"] = datamodule.num_classes
+  metrics: {}
