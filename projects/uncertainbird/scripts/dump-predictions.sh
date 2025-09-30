@@ -104,7 +104,7 @@ for model in "${models[@]}"; do
       extra_args=$(echo "$extras" | sed 's/,/ /g' | sed 's/=/=/g')
     fi
 
-    /workspace/projects/uncertainbird/train.sh \
+    ./projects/uncertainbird/train.sh \
       $timeout \
       experiment="$config_path/$model" \
       datamodule.dataset.dataset_name=$dname \

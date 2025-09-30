@@ -189,7 +189,7 @@ def plot_combined_reliability_diagram(
             edgecolors="black",
             linewidth=0.5,
             label=(
-                f"{dataset} | ECE weighted: {data[dataset]['metrics']['ece_weighted']*100:.2f}"
+                rf"{dataset} | MCS: {data[dataset]['metrics']['mcs']*100:.2f}"
                 if "metrics" in data[dataset]
                 else dataset
             ),
@@ -210,7 +210,8 @@ def plot_combined_reliability_diagram(
     # Set labels and title
     ax.set_xlabel("Mean Predicted Probability")
     ax.set_ylabel("Fraction of Positives")
-    ax.set_title(title)
+    if title:
+        ax.set_title(title)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.legend()
@@ -354,7 +355,6 @@ def print_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> None:
         TopKMultiLabelCalibrationError,
     )
     from uncertainbird.modules.metrics.uncertainty import MiscalibrationScore
-
 
     num_labels = targets.shape[1]
     accuracy = MultilabelAccuracy(num_labels=num_labels)(predictions, targets)
