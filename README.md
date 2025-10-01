@@ -45,6 +45,11 @@ eval ./venv/bin/activate
 ./projects/UncertainBird/scripts/dump-predictions.sh --models <model1,model2,...> --dataset <dataset_name> --batch_size <batch_size> --gpus <gpu_id>
 ```
 
+Dump perch v2 predictions for models trained on BirdSet:
+```bash
+python ./projects/uncertainbird/scripts/dump_perch_predictions.py --datasets HSN --gpu 2 --output-dir /workspace/logs/predictions/perch_v2
+```
+
 ## Run experiments
 
 Our experiments are defined in the `projects/UncertainBird/configs/experiment/` folder. To run an experiment, use the following command in the directory of the repository:
