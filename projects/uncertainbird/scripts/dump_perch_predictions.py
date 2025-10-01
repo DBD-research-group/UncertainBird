@@ -46,9 +46,14 @@ import tensorflow as tf  # type: ignore
 # Local imports (repository specific)
 try:
     from birdset.datamodule.birdset_datamodule import BirdSetDataModule
-    from birdset.datamodule.base_datamodule import DatasetConfig, BirdSetTransformsWrapper
+    from birdset.datamodule.base_datamodule import (
+        DatasetConfig,
+        BirdSetTransformsWrapper,
+    )
 except Exception as e:  # pragma: no cover
-    raise RuntimeError("Failed to import BirdSetDataModule components. Ensure project dependencies are installed.") from e
+    raise RuntimeError(
+        "Failed to import BirdSetDataModule components. Ensure project dependencies are installed."
+    ) from e
 
 try:
     from uncertainbird.utils.plotting import print_metrics
@@ -57,6 +62,7 @@ except Exception:
     def print_metrics(preds: torch.Tensor, targets: torch.Tensor):  # type: ignore
         return {"num_samples": preds.shape[0]}
 
+
 import datasets  # HF datasets
 import pandas as pd
 
@@ -64,7 +70,9 @@ FULL_LABEL_SPACE_SIZE = 9736  # BirdSet XCL total classes
 XCL_HF_NAME = "XCL"
 HF_PATH = "DBD-research-group/BirdSet"
 PERCH_TF_HUB_HANDLE = "https://www.kaggle.com/models/google/bird-vocalization-classifier/tensorFlow2/perch_v2/2"
-PERCH_CLASS_CSV = Path("/workspace/projects/uncertainbird/resources/perch_v2_ebird_classes.csv")
+PERCH_CLASS_CSV = Path(
+    "/workspace/projects/uncertainbird/resources/perch_v2_ebird_classes.csv"
+)
 
 
 def load_perch_model(gpu: int | None):
@@ -98,9 +106,15 @@ def build_label_mappings() -> Dict[str, Dict[str, int]]:
     pretrain_labels = pretrain_df["ebird2021"].tolist()
     pretrain_map = {lbl: i for i, lbl in enumerate(pretrain_labels)}
 
-    xcl_labels = datasets.load_dataset_builder(HF_PATH, XCL_HF_NAME).info.features["ebird_code"].names
+    xcl_labels = (
+        datasets.load_dataset_builder(HF_PATH, XCL_HF_NAME)
+        .info.features["ebird_code"]
+        .names
+    )
     if len(xcl_labels) != FULL_LABEL_SPACE_SIZE:
-        print(f"Warning: XCL label space size {len(xcl_labels)} != expected {FULL_LABEL_SPACE_SIZE}")
+        print(
+            f"Warning: XCL label space size {len(xcl_labels)} != expected {FULL_LABEL_SPACE_SIZE}"
+        )
     xcl_map = {lbl: i for i, lbl in enumerate(xcl_labels)}
 
     return {
@@ -111,7 +125,9 @@ def build_label_mappings() -> Dict[str, Dict[str, int]]:
     }
 
 
-def expand_logits(logits: torch.Tensor, dataset_labels: List[str], maps: Dict[str, Dict[str, int]]):
+def expand_logits(
+    logits: torch.Tensor, dataset_labels: List[str], maps: Dict[str, Dict[str, int]]
+):
     """Expand subset logits to full XCL space.
 
     Args:
@@ -154,7 +170,9 @@ def expand_logits(logits: torch.Tensor, dataset_labels: List[str], maps: Dict[st
     return full, missing
 
 
-def expand_targets(targets: torch.Tensor, dataset_labels: List[str], maps: Dict[str, Dict[str, int]]):
+def expand_targets(
+    targets: torch.Tensor, dataset_labels: List[str], maps: Dict[str, Dict[str, int]]
+):
     """Expand dataset multi-hot targets (N, D) into full XCL space (N, 9736)."""
     xcl_map = maps["xcl"]
     N = targets.shape[0]
@@ -201,7 +219,7 @@ def process_dataset(dataset_name: str, model, maps, args):
     raw_logits_list = []  # over perch pretrain space
     raw_targets_list = []  # dataset subset space
 
-    serving_fn = model.signatures['serving_default']
+    serving_fn = model.signatures["serving_default"]
 
     # Determine dataset subset labels (order used by targets)
     ds_builder = datasets.load_dataset_builder(HF_PATH, dataset_name)
@@ -211,12 +229,12 @@ def process_dataset(dataset_name: str, model, maps, args):
 
     for idx in tqdm(range(min(len(test_ds), limit)), desc=f"{dataset_name} samples"):
         sample = test_ds[idx]
-        wav = sample['input_values'].squeeze(0).detach().cpu().numpy()  # (T,)
+        wav = sample["input_values"].squeeze(0).detach().cpu().numpy()  # (T,)
         tf_in = tf.convert_to_tensor(wav[np.newaxis, :], dtype=tf.float32)
         out = serving_fn(inputs=tf_in)
-        logits_np = out['label'].numpy()  # (1, P)
+        logits_np = out["label"].numpy()  # (1, P)
         raw_logits_list.append(torch.from_numpy(logits_np))
-        raw_targets_list.append(sample['labels'].unsqueeze(0).cpu())  # (1, D)
+        raw_targets_list.append(sample["labels"].unsqueeze(0).cpu())  # (1, D)
 
     raw_logits = torch.cat(raw_logits_list, dim=0)
     raw_targets = torch.cat(raw_targets_list, dim=0)
@@ -226,7 +244,9 @@ def process_dataset(dataset_name: str, model, maps, args):
     full_targets = expand_targets(raw_targets, ds_labels, maps)
 
     if missing_labels:
-        print(f"Dataset {dataset_name}: {len(missing_labels)} labels missing from Perch pretrain space.")
+        print(
+            f"Dataset {dataset_name}: {len(missing_labels)} labels missing from Perch pretrain space."
+        )
 
     # Convert to probabilities (softmax over non-zero columns? Use softmax over all for consistency)
     predictions = torch.softmax(full_logits, dim=1)
@@ -254,6 +274,7 @@ def process_dataset(dataset_name: str, model, maps, args):
     }
 
     data = {
+        "logits": full_logits,
         "predictions": predictions,
         "targets": full_targets,
         "metadata": metadata,
@@ -264,18 +285,49 @@ def process_dataset(dataset_name: str, model, maps, args):
     with open(out_dir / pickle_name, "wb") as f:
         pickle.dump(data, f)
 
-
     print(f"Saved dataset {dataset_name}: {pickle_name}")
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Dump Perch v2 predictions over BirdSet subsets.")
-    p.add_argument("--datasets", nargs="+", required=True, help="List of BirdSet subset keys (e.g. HSN NBP SSW)")
-    p.add_argument("--gpu", type=int, default=None, help="GPU index to use (sets CUDA_VISIBLE_DEVICES)")
-    p.add_argument("--output-dir", type=str, required=True, help="Base directory to write per-dataset results")
-    p.add_argument("--data-dir", type=str, default="/workspace/data_birdset", help="Local cache directory for BirdSet data")
-    p.add_argument("--num-workers", type=int, default=4, help="Data loading workers for BirdSetDataModule")
-    p.add_argument("--max-samples", type=int, default=None, help="Optional limit for number of test samples (debug)")
+    p = argparse.ArgumentParser(
+        description="Dump Perch v2 predictions over BirdSet subsets."
+    )
+    p.add_argument(
+        "--datasets",
+        nargs="+",
+        required=True,
+        help="List of BirdSet subset keys (e.g. HSN NBP SSW)",
+    )
+    p.add_argument(
+        "--gpu",
+        type=int,
+        default=None,
+        help="GPU index to use (sets CUDA_VISIBLE_DEVICES)",
+    )
+    p.add_argument(
+        "--output-dir",
+        type=str,
+        required=True,
+        help="Base directory to write per-dataset results",
+    )
+    p.add_argument(
+        "--data-dir",
+        type=str,
+        default="/workspace/data_birdset",
+        help="Local cache directory for BirdSet data",
+    )
+    p.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="Data loading workers for BirdSetDataModule",
+    )
+    p.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Optional limit for number of test samples (debug)",
+    )
     return p.parse_args()
 
 
