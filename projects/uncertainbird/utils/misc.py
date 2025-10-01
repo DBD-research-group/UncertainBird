@@ -12,6 +12,7 @@ from torchmetrics.functional.classification import (
     f1_score,
 )
 
+
 def load_dump(
     path: Union[str, Path], print_stats: bool = True
 ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, Any]]:
@@ -119,6 +120,9 @@ def class_wise_statistics(
             - f1_score (float): F1 score for the class
             - ece (float): Expected Calibration Error for the class
     """
+    from uncertainbird.modules.metrics.uncertainty import (
+        binary_miscalibration_score,
+    )
 
     num_classes = predictions.shape[1]
     stats = {
@@ -154,6 +158,9 @@ def class_wise_statistics(
             ece = binary_calibration_error(
                 class_preds, class_targets, n_bins=n_bins
             ).item()
+            mcs = binary_miscalibration_score(
+                class_preds, class_targets, n_bins=n_bins
+            ).item()
             stats["mean"].append(mean_pred)
             stats["std"].append(std_pred)
             stats["min"].append(min_pred)
@@ -163,6 +170,7 @@ def class_wise_statistics(
             stats["recall"].append(rec)
             stats["f1_score"].append(f1)
             stats["ece"].append(ece)
+            stats["mcs"].append(mcs)
     # Convert lists to tensors for easier handling
     for key in stats:
         stats[key] = torch.tensor(stats[key])
