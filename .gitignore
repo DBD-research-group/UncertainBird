@@ -6,7 +6,7 @@ wandb/
 *.MP3
 *.Mp3
 *.WAV
-*.csv
+# *.csv
 *.json
 output_birdset/
 *.hydra
@@ -188,4 +188,4 @@ lightning_logs/
 
 settings.json
 
-models/
+models/*

@@ -353,6 +353,8 @@ def print_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> None:
         MultilabelCalibrationError,
         TopKMultiLabelCalibrationError,
     )
+    from uncertainbird.modules.metrics.uncertainty import MiscalibrationScore
+
 
     num_labels = targets.shape[1]
     accuracy = MultilabelAccuracy(num_labels=num_labels)(predictions, targets)
@@ -379,6 +381,15 @@ def print_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> None:
     ece_21 = TopKMultiLabelCalibrationError(k=21, n_bins=10, criterion=criterion)(
         predictions, targets
     )
+    mcs = MiscalibrationScore(n_bins=10, multilabel_average="weighted")(
+        predictions, targets
+    )
+    ece_under = MiscalibrationScore(
+        n_bins=10, norm="under", multilabel_average="weighted"
+    )(predictions, targets)
+    ece_over = MiscalibrationScore(
+        n_bins=10, norm="over", multilabel_average="weighted"
+    )(predictions, targets)
 
     metrics = {
         "accuracy": accuracy,
@@ -393,6 +404,9 @@ def print_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> None:
         "ece_top_5": ece_5,
         "ece_top_10": ece_10,
         "ece_top_21": ece_21,
+        "mcs": mcs,
+        "ece_under": ece_under,
+        "ece_over": ece_over,
     }
 
     print("Accuracy:", accuracy)
@@ -407,6 +421,9 @@ def print_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> None:
     print("ECE Top-5:", ece_5)
     print("ECE Top-10:", ece_10)
     print("ECE Top-21:", ece_21)
+    print("Miscalibration Score (MCS):", mcs)
+    print("ECE Under-confidence:", ece_under)
+    print("ECE Over-confidence:", ece_over)
 
     return metrics
 

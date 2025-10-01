@@ -2,7 +2,7 @@
 defaults:
   - override /datamodule: HSN.yaml
   - override /module: multilabel-uncertainty.yaml
-  - override /module/network: convnext.yaml
+  - override /module/network: perch_v2.yaml
   - override /callbacks: default.yaml
   - override /trainer: single_gpu.yaml
   - override /datamodule/transforms: bird_default_multilabel.yaml
@@ -21,24 +21,33 @@ logger:
     mode: disabled
     version: LT_convnext_${seed}_${start_time}
 
+
+
 module:
 
   metrics:
-    num_labels: 9736  # BirdSetLT has 9736 classes
-
-  mask_logits: False
+    _target_: uncertainbird.modules.metrics.uncertainty.NoMetricsConfig
+    num_labels: 9736  # Number of classes of BirdSet XCL to be comatible with other models
+   
   network:
     model:
-      local_checkpoint: null #Add the path to your XCL pretraining checkpoint here, if it is saved locally.
-      checkpoint: DBD-research-group/ConvNeXT-Base-BirdSet-XCL #Add the HuggingFace path to your XCL pretraining checkpoint here if it is uploaded on HuggingFace.
       pretrain_info:
         hf_path: ${datamodule.dataset.hf_path}
         hf_name: ${datamodule.dataset.hf_name}
         hf_pretrain_name: XCL
         valid_test_only: False
 
+  mask_logits: False
+
+
+trainer:
+  accelerator: gpu
+  devices: [0]
+
+
 datamodule:
   dataset:
+    dataset_name: HSN
     val_split: null
     class_weights_loss: null
     class_weights_sampler: null
@@ -47,8 +56,8 @@ datamodule:
     # num_classes: 9736  # Override number of classes to match BirdSetLT
   loaders:
     test:
-      batch_size: 2048
-      num_workers: 32
+      batch_size: 256
+      num_workers: 16
 
 callbacks:
   dump_predictions:

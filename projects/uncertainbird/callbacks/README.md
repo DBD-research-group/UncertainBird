@@ -20,7 +20,7 @@ Or add it directly:
 ```yaml
 callbacks:
   dump_predictions:
-    _target_: projects.uncertainbird.callbacks.DumpPredictionsCallback
+    _target_: uncertainbird.callbacks.DumpPredictionsCallback
     save_dir: "${paths.output_dir}/predictions"
     filename_prefix: "test_predictions"
     save_format: "pickle"
@@ -30,7 +30,7 @@ callbacks:
 ### 2. Using in Python Code
 
 ```python
-from projects.uncertainbird.callbacks import DumpPredictionsCallback
+from uncertainbird.callbacks import DumpPredictionsCallback
 
 # Create the callback
 callback = DumpPredictionsCallback(

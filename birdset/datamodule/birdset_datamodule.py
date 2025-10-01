@@ -162,7 +162,7 @@ class BirdSetDataModule(BaseDataModuleHF):
                 )
 
             log.info(">> One-hot-encode classes")
-            for split in ["train", "test_5s"]:
+            for split in ["test_5s"]:
                 dataset[split] = dataset[split].map(
                     self._classes_one_hot,
                     batched=True,
