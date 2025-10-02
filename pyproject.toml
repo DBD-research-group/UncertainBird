@@ -62,5 +62,5 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["projects", "."]
-include = ["uncertainbird*", "birdset*"]
+include = ["uncertainbird*"]
 
