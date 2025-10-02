@@ -18,7 +18,7 @@
             "name": "Python Debugger: Current File with Arguments",
             "type": "debugpy",
             "request": "launch",
-            "program": "./birdset/train.py",
+            "program": "${file}",
             "console": "integratedTerminal",
             "args": "${command:pickArgs}",
             "justMyCode": false
