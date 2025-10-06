@@ -1,3 +1,0 @@
-defaults:
-  - wandb.yaml
-  - mlflow.yaml # does not work
