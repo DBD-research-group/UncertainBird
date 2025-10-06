@@ -31,10 +31,10 @@ from typing import Dict, List
 import numpy as np
 import torch
 from tqdm import tqdm
+from uncertainbird.datamodule.BirdSetEvalDataModule import BirdSetEvalDataModule
 
 # Local imports (repository specific)
 try:
-    from birdset.datamodule.birdset_datamodule import BirdSetDataModule
     from birdset.datamodule.base_datamodule import (
         DatasetConfig,
         BirdSetTransformsWrapper,
@@ -133,7 +133,7 @@ def process_dataset(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # DataModule setup
-    dm = BirdSetDataModule(
+    dm = BirdSetEvalDataModule(
         dataset=DatasetConfig(
             data_dir=args.data_dir,
             hf_path=HF_PATH,
@@ -288,10 +288,10 @@ def main():
 
     for ds in args.datasets:
         print(f"\nProcessing dataset: {ds}")
-        try:
-            process_dataset(ds, model, preprocessor, device, xcl_labels, args)
-        except Exception as e:
-            print(f"Error processing {ds}: {e}")
+        process_dataset(ds, model, preprocessor, device, xcl_labels, args)
+        # try:
+        # except Exception as e:
+        #     print(f"Error processing {ds}: {e}")
 
     print("All done.")
 
