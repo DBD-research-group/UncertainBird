@@ -30,9 +30,9 @@ And install python dependencies with [uv](https://docs.astral.sh/uv/).
 uv sync
 ```
 
-Install TF specific dependencies:
+To experiment with Perch_v2 install TF specific dependencies separately:
 ```bash
-uv pip install -r projects/UncertainBird/tf-requirements.txt
+uv pip install -r tf-requirements.txt
 ```
 Activate virtual environment:
 ```
