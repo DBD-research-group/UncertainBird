@@ -174,7 +174,8 @@ def parse_args():
     p.add_argument(
         "--datasets",
         nargs="+",
-        required=True,
+        required=False,
+        default=["PER", "POW", "NES", "UHH", "HSN", "NBP", "SSW", "SNE"],
         help="List of BirdSet subset keys (e.g. HSN NBP SSW)",
     )
     p.add_argument(
