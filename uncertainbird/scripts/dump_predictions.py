@@ -1,23 +1,29 @@
 #!/usr/bin/env python
 """
-Dump AudioProtoPNet predictions, targets and metrics for one or more BirdSet subsets.
+Dump model predictions, targets and metrics for one or more BirdSet subsets.
 
 This script mirrors the behavior of the DumpPredictionsCallback by collecting all
-predictions (over the full 9,736 BirdSet XCL label space), expanding target multi-hot
-vectors into the same space, computing metrics, and saving a pickle artifact per dataset.
+predictions (logits mapped to the full 9,736 BirdSet XCL label space), expanding
+target multi-hot vectors into the same space, computing metrics, and saving a
+pickle artifact per dataset.
 
 Usage example:
-    python dump_audioprotopnet_predictions.py \
+    python dump_predictions.py \
+        --model perch_v2 \
         --datasets HSN NBP SSW \
         --gpu 0 \
-        --output-dir /workspace/logs/predictions/audioprotopnet \
+        --output-dir /workspace/logs/predictions/perch_v2 \
 
 Outputs per dataset (inside <output-dir>/<dataset>/):
-    audioprotopnet_test_predictions_<dataset>_<timestamp>.pkl  (predictions, targets, metadata, metrics)
+    test_predictions_<timestamp>.pkl  (contains predictions, targets, metadata, metrics)
+    logits.pt                         (torch.Tensor of shape (N, 9736))
+    targets.pt                        (torch.Tensor of shape (N, 9736))
+    metrics.json                      (JSON of computed metrics)
 
 Notes:
-    * Uses Hugging Face model "DBD-research-group/AudioProtoPNet-20-BirdSet-XCL".
-    * Iterates sample-by-sample (can be batched later if desired).
+    * Requires TensorFlow + tensorflow_hub for the Perch v2 model.
+    * Assumes resources/perch_v2_ebird_classes.csv exists (as in repo) with column 'ebird2021'.
+    * Iterates sample-by-sample (can be optimized with batching if needed).
 """
 from __future__ import annotations
 
@@ -26,15 +32,14 @@ import os
 import pickle
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
 
-import numpy as np
 import torch
 from tqdm import tqdm
 
+
 # Local imports (repository specific)
 try:
-    from birdset.datamodule.birdset_datamodule import BirdSetDataModule
+    from uncertainbird.datamodule.BirdSetEvalDataModule import BirdSetEvalDataModule
     from birdset.datamodule.base_datamodule import (
         DatasetConfig,
         BirdSetTransformsWrapper,
@@ -46,6 +51,7 @@ except Exception as e:  # pragma: no cover
 
 try:
     from uncertainbird.utils.plotting import print_metrics
+    from uncertainbird.utils.misc import expand_logits, expand_targets
 except Exception:
     # Fallback: dummy metrics function
     def print_metrics(preds: torch.Tensor, targets: torch.Tensor):  # type: ignore
@@ -53,74 +59,19 @@ except Exception:
 
 
 import datasets  # HF datasets
-import pandas as pd
 
 FULL_LABEL_SPACE_SIZE = 9736  # BirdSet XCL total classes
-XCL_HF_NAME = "XCL"
 HF_PATH = "DBD-research-group/BirdSet"
-MODEL_NAME = "DBD-research-group/AudioProtoPNet-20-BirdSet-XCL"
+XCL_HF_NAME = "XCL"
 
 
-def load_model(gpu: int | None):
-    """Load AudioProtoPNet HF model and move to device."""
-    if gpu is not None:
-        os.environ.setdefault("CUDA_VISIBLE_DEVICES", str(gpu))
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    from uncertainbird.modules.models.audioprotopnet import AudioProtoPNet
 
-    model = AudioProtoPNet()
-    model.eval().to(device)
-    return model, device
-
-
-def load_xcl_labels() -> List[str]:
-    """Return ordered XCL label list from HF dataset builder."""
-    xcl_labels = (
-        datasets.load_dataset_builder(HF_PATH, XCL_HF_NAME)
-        .info.features["ebird_code"]
-        .names
-    )
-    if len(xcl_labels) != FULL_LABEL_SPACE_SIZE:
-        print(
-            f"Warning: XCL label space size {len(xcl_labels)} != expected {FULL_LABEL_SPACE_SIZE}"
-        )
-    return xcl_labels
-
-
-def identity_logits(logits: torch.Tensor) -> torch.Tensor:
-    """AudioProtoPNet already outputs logits over full XCL space (9736)."""
-    return logits
-
-
-def expand_targets(
-    targets: torch.Tensor, dataset_labels: List[str], maps: Dict[str, Dict[str, int]]
-):
-    """Expand dataset multi-hot targets (N, D) into full XCL space (N, 9736)."""
-    xcl_map = maps["xcl"]
-    N = targets.shape[0]
-    full = torch.zeros(N, FULL_LABEL_SPACE_SIZE, dtype=targets.dtype)
-    for j, lbl in enumerate(dataset_labels):
-        xi = xcl_map.get(lbl)
-        if xi is None:
-            continue
-        full[:, xi] = targets[:, j]
-    return full
-
-
-def process_dataset(
-    dataset_name: str,
-    model: torch.nn.Module,
-    device: torch.device,
-    xcl_labels: List[str],
-    args,
-):
-    out_dir = Path(args.output_dir) / dataset_name
+def process_dataset(dataset_name: str, model, maps, args):
+    out_dir = Path(args.output_dir) / args.model / dataset_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # DataModule setup
-    dm = BirdSetDataModule(
+    dm = BirdSetEvalDataModule(
         dataset=DatasetConfig(
             data_dir=args.data_dir,
             hf_path=HF_PATH,
@@ -145,31 +96,34 @@ def process_dataset(
         print(f"Warning: No test samples for dataset {dataset_name}. Skipping.")
         return
 
-    # Collect logits (full space) & raw targets (subset space)
-    logits_list: List[torch.Tensor] = []
-    targets_list: List[torch.Tensor] = []
+    # Collect raw logits
+    raw_logits_list = []  # over perch pretrain space
+    raw_targets_list = []  # dataset subset space
+
 
     # Determine dataset subset labels (order used by targets)
     ds_builder = datasets.load_dataset_builder(HF_PATH, dataset_name)
     ds_labels = ds_builder.info.features["ebird_code"].names
 
     limit = args.max_samples if args.max_samples is not None else len(test_ds)
+    with torch.no_grad():
+        for idx in tqdm(range(min(len(test_ds), limit)), desc=f"{dataset_name} samples"):
+            sample = test_ds[idx]
+            logits = model(sample['input_values'])
+            raw_logits_list.append(logits)
+            raw_targets_list.append(sample["labels"].unsqueeze(0).cpu())  # (1, D)
 
-    for idx in tqdm(range(min(len(test_ds), limit)), desc=f"{dataset_name} samples"):
-        sample = test_ds[idx]
-        wav = sample["input_values"]  # (1, T)
-        with torch.no_grad():
-            wav = wav.to(device)
-            logits = model(wav)  # (1, 9736)
-        logits_list.append(logits.cpu())
-        targets_list.append(sample["labels"].unsqueeze(0).cpu())  # (1, D)
+    raw_logits = torch.cat(raw_logits_list, dim=0).cpu()
+    raw_targets = torch.cat(raw_targets_list, dim=0).cpu()
 
-    full_logits = identity_logits(torch.cat(logits_list, dim=0))
-    raw_targets = torch.cat(targets_list, dim=0)
-    full_targets = expand_targets(
-        raw_targets, ds_labels, {"xcl": {lbl: i for i, lbl in enumerate(xcl_labels)}}
-    )
-    missing_labels = []  # Not applicable (model covers full space)
+    # Expand to full space
+    full_logits, missing_labels = expand_logits(raw_logits, ds_labels, maps, FULL_LABEL_SPACE_SIZE)
+    full_targets = expand_targets(raw_targets, ds_labels, maps['xcl'], FULL_LABEL_SPACE_SIZE)
+
+    if missing_labels:
+        print(
+            f"Dataset {dataset_name}: {len(missing_labels)} labels missing pretrain space."
+        )
 
     # Convert to probabilities (softmax over non-zero columns? Use softmax over all for consistency)
     predictions = torch.softmax(full_logits, dim=1)
@@ -178,7 +132,7 @@ def process_dataset(
     metrics = print_metrics(predictions, full_targets.to(torch.int))
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    pickle_name = f"audioprotopnet_test_predictions_{dataset_name}_{timestamp}.pkl"
+    pickle_name = f"perch_test_predictions_{dataset_name}_{timestamp}.pkl"
 
     metadata = {
         "total_samples": predictions.shape[0],
@@ -186,13 +140,8 @@ def process_dataset(
         "target_shape": list(full_targets.shape),
         "num_batches": 1,
         "dataset": dataset_name,
-        "missing_labels_count": 0,
-        "missing_labels_sample": [],
-        "model_info": {
-            "model_source": MODEL_NAME,
-            "class_name": "AudioProtoPNet",
-            "num_classes": FULL_LABEL_SPACE_SIZE,
-        },
+        "missing_labels_count": len(missing_labels),
+        "missing_labels_sample": missing_labels[:25],
         "metrics_keys": list(metrics.keys()),
     }
 
@@ -213,7 +162,14 @@ def process_dataset(
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="Dump AudioProtoPNet predictions over BirdSet subsets."
+        description="Dump model predictions over BirdSet subsets."
+    )
+    p.add_argument(
+        "--model",
+        type=str,
+        choices=["perch_v2", "birdmae", "audioprotopnet", "convnext_bs"],
+        required=True,
+        help="Model to use",
     )
     p.add_argument(
         "--datasets",
@@ -261,18 +217,29 @@ def main():
     if args.gpu is not None:
         os.environ.setdefault("CUDA_VISIBLE_DEVICES", str(args.gpu))
 
-    print(f"Loading AudioProtoPNet model (GPU {args.gpu}) ...")
-    model, device = load_model(args.gpu)
+    # switch model loading based on arg
+    print(f"Loading model {args.model} (GPU {args.gpu}) ...")
+    if args.model == "perch_v2":
+        from uncertainbird.modules.models.perchv2 import Perchv2Model
+        model = Perchv2Model(num_classes=FULL_LABEL_SPACE_SIZE, gpu_to_use=args.gpu, map_logits_to_XCL=True)
+    if args.model == "audioprotopnet":
+        from uncertainbird.modules.models.audioprotopnet import AudioProtoPNet
+        model = AudioProtoPNet(pretrain_info=None) 
+        # model.to("cuda" if args.gpu is not None else "cpu") 
+    if args.model == "birdmae":
+        from uncertainbird.modules.models.birdmae import BirdMAE
+        model = BirdMAE(num_classes=FULL_LABEL_SPACE_SIZE)
+    if args.model == "convnext_bs":
+        from uncertainbird.modules.models.convnext_bs import ConvNeXtBS
+        model = ConvNeXtBS(num_classes=FULL_LABEL_SPACE_SIZE)
 
-    print("Loading XCL label list ...")
-    xcl_labels = load_xcl_labels()
+    print("Building label mappings ...")
+    maps = model.get_label_mappings()
 
     for ds in args.datasets:
         print(f"\nProcessing dataset: {ds}")
-        try:
-            process_dataset(ds, model, device, xcl_labels, args)
-        except Exception as e:
-            print(f"Error processing {ds}: {e}")
+        process_dataset(ds, model, maps, args)
+
 
     print("All done.")
 

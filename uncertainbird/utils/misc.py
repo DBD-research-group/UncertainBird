@@ -516,3 +516,61 @@ def split_based_on_x_samples_per_class(data, samples_per_class=10):
         }
 
     return data
+
+def expand_logits(
+    logits: torch.Tensor, dataset_labels: List[str], maps: Dict[str, Dict[str, int]], full_size: int
+):
+    """Expand subset logits to full XCL space.
+
+    Args:
+        logits: (N, P) Perch logits over its pretrain class subset order.
+        dataset_labels: labels (ordered) for the dataset subset.
+        maps: mapping dict from build_label_mappings.
+
+    Returns:
+        full_logits: (N, 9736)
+        missing_labels: labels in dataset not present in perch pretrain list
+    """
+    pretrain_map = maps["pretrain"]
+    xcl_map = maps["xcl"]
+
+    N = logits.shape[0]
+    full = torch.zeros(N, full_size, dtype=logits.dtype).cpu()
+
+    missing = []
+    # Build list once for index gather
+    gather_indices = []
+    target_positions = []
+    for lbl in dataset_labels:
+        pi = pretrain_map.get(lbl)
+        if pi is None:
+            missing.append(lbl)
+            continue
+        xi = xcl_map.get(lbl)
+        if xi is None:
+            missing.append(lbl)
+            continue
+        gather_indices.append(pi)
+        target_positions.append(xi)
+
+    if gather_indices:
+        gather_t = torch.as_tensor(gather_indices, dtype=torch.long)
+        subset_logits = logits[:, gather_t]  # (N, K)
+        dest_idx = torch.as_tensor(target_positions, dtype=torch.long)
+        full[:, dest_idx] = subset_logits
+
+    return full, missing
+
+
+def expand_targets(
+    targets: torch.Tensor, dataset_labels: List[str], map: Dict[str, int], full_size: int
+):
+    """Expand dataset multi-hot targets (N, D) into full XCL space (N, 9736)."""
+    N = targets.shape[0]
+    full = torch.zeros(N, full_size, dtype=targets.dtype)
+    for j, lbl in enumerate(dataset_labels):
+        xi = map.get(lbl)
+        if xi is None:
+            continue
+        full[:, xi] = targets[:, j]
+    return full

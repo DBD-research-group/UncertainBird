@@ -6,8 +6,10 @@ import torch
 from transformers import AutoFeatureExtractor, AutoModelForSequenceClassification
 from birdset.configs import PretrainInfoConfig
 
+from uncertainbird.modules.models.UncertainBirdModel import UncertrainBirdModel
 
-class BirdMAE(nn.Module):
+
+class BirdMAE(UncertrainBirdModel):
     """
     AudioProtoPNet model trained on BirdSet XCL dataset.
     The model expects a raw 1-channel 5s waveform with sample rate of 32kHz as input.
@@ -19,7 +21,6 @@ class BirdMAE(nn.Module):
     def __init__(
         self,
         num_classes: int = 9736,  # kept for API symmetry; model's classifier head is fixed by the checkpoint
-        pretrain_info: Optional[PretrainInfoConfig] = None,
     ):
         super().__init__()
         # Load model + feature extractor from the checkpoint (requires trust_remote_code=True)
@@ -31,32 +32,6 @@ class BirdMAE(nn.Module):
             trust_remote_code=True,
         )
         self.config = self.model.config
-        self.pretrain_info = pretrain_info
-
-        # pretrain class labels
-        pretrain_classlabels = self.config.id2label.values()
-        # Load dataset information
-        dataset_info = datasets.load_dataset_builder(
-            self.pretrain_info.hf_path, self.pretrain_info.hf_pretrain_name
-        ).info
-        dataset_classlabels = dataset_info.features["ebird_code"].names
-
-        # build label2id mapping for dataset class labels from self.config.id2label
-        self.config.label2id = {
-            label: idx for idx, label in self.config.id2label.items()
-        }
-
-        # Create the class mask
-        self.class_mask = [
-            self.config.label2id[label]
-            for label in dataset_classlabels
-            if label in pretrain_classlabels
-        ]
-        self.class_indices = [
-            i
-            for i, label in enumerate(dataset_classlabels)
-            if label in pretrain_classlabels
-        ]
 
     def preprocess(self, waveform: torch.Tensor):
         """
@@ -104,22 +79,20 @@ class BirdMAE(nn.Module):
 
         # Return logits tensor (standard HF naming); fallback to raw outputs if absent
         if hasattr(outputs, "logits"):
-            logits = outputs.logits
-
-            if self.class_mask:
-                # Initialize full_logits to 0 for all classes
-                full_logits = torch.full(
-                    (
-                        logits.shape[0],
-                        9736,
-                    ),  # Assuming 9736 is the total number of classes
-                    0.0,
-                    device=logits.device,
-                    dtype=logits.dtype,
-                )
-                # Extract valid logits using indices from class_mask and directly place them
-                full_logits[:, self.class_indices] = logits[:, self.class_mask]
-                logits = full_logits
-
-            return logits
+            return outputs.logits
         return outputs
+
+    def get_label_mappings(self):
+        xcl_labels = (
+            datasets.load_dataset_builder('DBD-research-group/BirdSet', 'XCL')
+            .info.features["ebird_code"]
+            .names
+        )
+        label2id = {label: idx for idx, label in self.config.id2label.items()}
+        xcl_map = {lbl: i for i, lbl in enumerate(xcl_labels)}
+        return {
+            'pretrain': label2id,
+            'xcl': xcl_map,
+            'pretrain_list': list(self.config.id2label.values()),
+            'xcl_list': xcl_labels,
+        }

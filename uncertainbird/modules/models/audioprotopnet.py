@@ -4,8 +4,10 @@ import torch
 from transformers import AutoFeatureExtractor, AutoModelForSequenceClassification
 from birdset.configs import PretrainInfoConfig
 
+from uncertainbird.modules.models.UncertainBirdModel import UncertrainBirdModel
 
-class AudioProtoPNet(nn.Module):
+
+class AudioProtoPNet(UncertrainBirdModel):
     """
     AudioProtoPNet model trained on BirdSet XCL dataset.
     The model expects a raw 1-channel 5s waveform with sample rate of 32kHz as input.
@@ -24,7 +26,7 @@ class AudioProtoPNet(nn.Module):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             "DBD-research-group/AudioProtoPNet-20-BirdSet-XCL",
             trust_remote_code=True,
-        )
+        ).to('cuda' if torch.cuda.is_available() else 'cpu')
         self.feature_extractor = AutoFeatureExtractor.from_pretrained(
             "DBD-research-group/AudioProtoPNet-20-BirdSet-XCL",
             trust_remote_code=True,
@@ -47,7 +49,7 @@ class AudioProtoPNet(nn.Module):
     ) -> torch.Tensor:
         # Preprocess raw waveform(s)
         preprocessed = self.preprocess(input_values)
-        preprocessed = preprocessed.squeeze(1)  # remove channel dim if present
+        preprocessed = preprocessed.squeeze(2)  # remove channel dim if present
 
         model_dtype = next(self.model.parameters()).dtype
         model_device = next(self.model.parameters()).device
@@ -79,3 +81,9 @@ class AudioProtoPNet(nn.Module):
         if hasattr(outputs, "logits"):
             return outputs.logits
         return outputs
+
+    def get_label_mappings(self):
+        return {
+            "pretrain": {lbl: i for i, lbl in enumerate(self.config.id2label.values())},
+            "xcl": {lbl: i for i, lbl in enumerate(self.config.id2label.values())}
+        }
