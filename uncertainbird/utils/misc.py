@@ -517,8 +517,12 @@ def split_based_on_x_samples_per_class(data, samples_per_class=10):
 
     return data
 
+
 def expand_logits(
-    logits: torch.Tensor, dataset_labels: List[str], maps: Dict[str, Dict[str, int]], full_size: int
+    logits: torch.Tensor,
+    dataset_labels: List[str],
+    maps: Dict[str, Dict[str, int]],
+    full_size: int,
 ):
     """Expand subset logits to full XCL space.
 
@@ -563,7 +567,10 @@ def expand_logits(
 
 
 def expand_targets(
-    targets: torch.Tensor, dataset_labels: List[str], map: Dict[str, int], full_size: int
+    targets: torch.Tensor,
+    dataset_labels: List[str],
+    map: Dict[str, int],
+    full_size: int,
 ):
     """Expand dataset multi-hot targets (N, D) into full XCL space (N, 9736)."""
     N = targets.shape[0]

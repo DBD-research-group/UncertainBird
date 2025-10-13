@@ -65,7 +65,6 @@ HF_PATH = "DBD-research-group/BirdSet"
 XCL_HF_NAME = "XCL"
 
 
-
 def process_dataset(dataset_name: str, model, maps, args):
     out_dir = Path(args.output_dir) / args.model / dataset_name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -100,16 +99,17 @@ def process_dataset(dataset_name: str, model, maps, args):
     raw_logits_list = []  # over perch pretrain space
     raw_targets_list = []  # dataset subset space
 
-
     # Determine dataset subset labels (order used by targets)
     ds_builder = datasets.load_dataset_builder(HF_PATH, dataset_name)
     ds_labels = ds_builder.info.features["ebird_code"].names
 
     limit = args.max_samples if args.max_samples is not None else len(test_ds)
     with torch.no_grad():
-        for idx in tqdm(range(min(len(test_ds), limit)), desc=f"{dataset_name} samples"):
+        for idx in tqdm(
+            range(min(len(test_ds), limit)), desc=f"{dataset_name} samples"
+        ):
             sample = test_ds[idx]
-            logits = model(sample['input_values'])
+            logits = model(sample["input_values"])
             raw_logits_list.append(logits)
             raw_targets_list.append(sample["labels"].unsqueeze(0).cpu())  # (1, D)
 
@@ -117,8 +117,12 @@ def process_dataset(dataset_name: str, model, maps, args):
     raw_targets = torch.cat(raw_targets_list, dim=0).cpu()
 
     # Expand to full space
-    full_logits, missing_labels = expand_logits(raw_logits, ds_labels, maps, FULL_LABEL_SPACE_SIZE)
-    full_targets = expand_targets(raw_targets, ds_labels, maps['xcl'], FULL_LABEL_SPACE_SIZE)
+    full_logits, missing_labels = expand_logits(
+        raw_logits, ds_labels, maps, FULL_LABEL_SPACE_SIZE
+    )
+    full_targets = expand_targets(
+        raw_targets, ds_labels, maps["xcl"], FULL_LABEL_SPACE_SIZE
+    )
 
     if missing_labels:
         print(
@@ -222,16 +226,24 @@ def main():
     print(f"Loading model {args.model} (GPU {args.gpu}) ...")
     if args.model == "perch_v2":
         from uncertainbird.modules.models.perchv2 import Perchv2Model
-        model = Perchv2Model(num_classes=FULL_LABEL_SPACE_SIZE, gpu_to_use=args.gpu, map_logits_to_XCL=True)
+
+        model = Perchv2Model(
+            num_classes=FULL_LABEL_SPACE_SIZE,
+            gpu_to_use=args.gpu,
+            map_logits_to_XCL=True,
+        )
     if args.model == "audioprotopnet":
         from uncertainbird.modules.models.audioprotopnet import AudioProtoPNet
-        model = AudioProtoPNet(pretrain_info=None) 
-        # model.to("cuda" if args.gpu is not None else "cpu") 
+
+        model = AudioProtoPNet(pretrain_info=None)
+        # model.to("cuda" if args.gpu is not None else "cpu")
     if args.model == "birdmae":
         from uncertainbird.modules.models.birdmae import BirdMAE
+
         model = BirdMAE(num_classes=FULL_LABEL_SPACE_SIZE)
     if args.model == "convnext_bs":
         from uncertainbird.modules.models.convnext_bs import ConvNeXtBS
+
         model = ConvNeXtBS(num_classes=FULL_LABEL_SPACE_SIZE)
 
     print("Building label mappings ...")
@@ -240,7 +252,6 @@ def main():
     for ds in args.datasets:
         print(f"\nProcessing dataset: {ds}")
         process_dataset(ds, model, maps, args)
-
 
     print("All done.")
 

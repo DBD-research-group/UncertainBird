@@ -13,12 +13,12 @@ import torch
 # the rest of the package can be inspected without requiring TF.
 
 from uncertainbird.modules.models.UncertainBirdModel import UncertrainBirdModel
+
 HF_PATH = "DBD-research-group/BirdSet"
 PERCH_TF_HUB_HANDLE = "https://www.kaggle.com/models/google/bird-vocalization-classifier/tensorFlow2/perch_v2/2"
-PERCH_CLASS_CSV = Path(
-    "/workspace/uncertainbird/resources/perch_v2_ebird_classes.csv"
-)
+PERCH_CLASS_CSV = Path("/workspace/uncertainbird/resources/perch_v2_ebird_classes.csv")
 XCL_HF_NAME = "XCL"
+
 
 def load_perch_model(gpu: int | None):
     # lazy imports to avoid hard dependency at module import time
@@ -48,7 +48,10 @@ def load_perch_model(gpu: int | None):
     model = hub.load(PERCH_TF_HUB_HANDLE)
     return model
 
-def build_label_mappings(full_label_space_size: int = 9736) -> Dict[str, Dict[str, int]]:
+
+def build_label_mappings(
+    full_label_space_size: int = 9736,
+) -> Dict[str, Dict[str, int]]:
     """Build mapping dicts for fast label index resolution.
 
     Returns:
@@ -80,8 +83,9 @@ def build_label_mappings(full_label_space_size: int = 9736) -> Dict[str, Dict[st
         "xcl_list": xcl_labels,
     }
 
+
 class Perchv2Model(UncertrainBirdModel):
-    
+
     def __init__(
         self,
         num_classes: int = 9736,  # kept for API symmetry; model's classifier head is fixed by the checkpoint
@@ -92,10 +96,9 @@ class Perchv2Model(UncertrainBirdModel):
         self.model = load_perch_model(gpu_to_use)
         self.label_mapping = build_label_mappings(num_classes)
         self.serving_fn = self.model.signatures["serving_default"]
-    
+
     def get_label_mappings(self):
         return self.label_mapping
-    
 
     def forward(self, waveform: torch.Tensor) -> torch.Tensor:
         """Run the model on a batch of waveforms.

@@ -3,12 +3,13 @@ import datasets
 import torch
 from uncertainbird.modules.models.UncertainBirdModel import UncertrainBirdModel
 
+
 class ConvNeXtBS(ConvNextBirdSet, UncertrainBirdModel):
 
     def get_label_mappings(self):
 
         xcl_labels = (
-            datasets.load_dataset_builder('DBD-research-group/BirdSet', 'XCL')
+            datasets.load_dataset_builder("DBD-research-group/BirdSet", "XCL")
             .info.features["ebird_code"]
             .names
         )

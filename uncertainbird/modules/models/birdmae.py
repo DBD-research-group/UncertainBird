@@ -84,15 +84,15 @@ class BirdMAE(UncertrainBirdModel):
 
     def get_label_mappings(self):
         xcl_labels = (
-            datasets.load_dataset_builder('DBD-research-group/BirdSet', 'XCL')
+            datasets.load_dataset_builder("DBD-research-group/BirdSet", "XCL")
             .info.features["ebird_code"]
             .names
         )
         label2id = {label: idx for idx, label in self.config.id2label.items()}
         xcl_map = {lbl: i for i, lbl in enumerate(xcl_labels)}
         return {
-            'pretrain': label2id,
-            'xcl': xcl_map,
-            'pretrain_list': list(self.config.id2label.values()),
-            'xcl_list': xcl_labels,
+            "pretrain": label2id,
+            "xcl": xcl_map,
+            "pretrain_list": list(self.config.id2label.values()),
+            "xcl_list": xcl_labels,
         }

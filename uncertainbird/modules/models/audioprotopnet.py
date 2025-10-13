@@ -26,7 +26,7 @@ class AudioProtoPNet(UncertrainBirdModel):
         self.model = AutoModelForSequenceClassification.from_pretrained(
             "DBD-research-group/AudioProtoPNet-20-BirdSet-XCL",
             trust_remote_code=True,
-        ).to('cuda' if torch.cuda.is_available() else 'cpu')
+        ).to("cuda" if torch.cuda.is_available() else "cpu")
         self.feature_extractor = AutoFeatureExtractor.from_pretrained(
             "DBD-research-group/AudioProtoPNet-20-BirdSet-XCL",
             trust_remote_code=True,
@@ -85,5 +85,5 @@ class AudioProtoPNet(UncertrainBirdModel):
     def get_label_mappings(self):
         return {
             "pretrain": {lbl: i for i, lbl in enumerate(self.config.id2label.values())},
-            "xcl": {lbl: i for i, lbl in enumerate(self.config.id2label.values())}
+            "xcl": {lbl: i for i, lbl in enumerate(self.config.id2label.values())},
         }
