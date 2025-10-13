@@ -42,12 +42,12 @@ eval ./venv/bin/activate
 ## Dump predictions for calibration analysis
 
 ```bash
-python ./projects/UncertainBird/scripts/dump-predictions.sh --model <model> --dataset <dataset_names> --gpu <gpu_id> --output-dir <output_dir> --num-workers <num_workers> 
+python ./uncertainbird/scripts/dump_predictions.py  --model <model> --dataset <dataset_names> --gpu <gpu_id> --output-dir <output_dir> --num-workers <num_workers> 
 ```
 
 For example:
 ```bash
-python ./projects/UncertainBird/scripts/dump-predictions.sh --model convnext_bs --datasets NBP,HSN --gpu 0 --output-dir ./logs/predictions --num-workers 1
+python ./uncertainbird/scripts/dump_predictions.py  --model convnext_bs --datasets NBP HSN --gpu 0 --output-dir ./logs/predictions --num-workers 1
 ```
 
 ## Experiments
@@ -58,7 +58,7 @@ See notebooks in `uncertainbird/benchmarking_calibration` for details. [This not
 
 ### Platt & Temperature Scaling
 
-See notebooks in `uncertainbird/posthoc_calibration` for details.
+See notebooks in `uncertainbird/notebooks/posthoc_calibration` for details.
 
 
 
