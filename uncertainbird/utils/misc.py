@@ -57,7 +57,6 @@ def load_dump(
         print(f"Loaded data with {metadata['total_samples']} samples")
         print(f"Predictions shape: {predictions.shape}")
         print(f"Targets shape: {targets.shape}")
-        print(f"Model info: {metadata['model_info']}")
 
     return predictions, targets, metadata
 

@@ -120,8 +120,8 @@ class Perchv2Model(UncertrainBirdModel):
                 "Install tensorflow to use this model."
             ) from exc
 
-        wav = waveform.squeeze(0).detach().cpu().numpy()  # (T,)
-        tf_in = tf.convert_to_tensor(wav[np.newaxis, :], dtype=tf.float32)
+        wav = waveform.squeeze(1).detach().cpu().numpy()  # (T,)
+        tf_in = tf.convert_to_tensor(wav, dtype=tf.float32)
         out = self.serving_fn(inputs=tf_in)
         logits_np = out["label"].numpy()
         logits = torch.from_numpy(logits_np)  # (1, P)
