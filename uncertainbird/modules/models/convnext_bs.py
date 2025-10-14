@@ -20,6 +20,6 @@ class ConvNeXtBS(ConvNextBirdSet, UncertrainBirdModel):
             "xcl": label2id,
         }
 
-    def forward(self, waveform: torch.Tensor):
-        spectrogram = self.preprocess(waveform)
-        return self.model(spectrogram)
+    def forward(self, waveforms: torch.Tensor):
+        spectrograms = self.preprocess(waveforms).squeeze(1)
+        return self.model(spectrograms)

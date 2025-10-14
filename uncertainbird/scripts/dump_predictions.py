@@ -36,6 +36,8 @@ from pathlib import Path
 import torch
 from tqdm import tqdm
 
+from torch.utils.data import DataLoader
+
 
 # Local imports (repository specific)
 try:
@@ -103,15 +105,16 @@ def process_dataset(dataset_name: str, model, maps, args):
     ds_builder = datasets.load_dataset_builder(HF_PATH, dataset_name)
     ds_labels = ds_builder.info.features["ebird_code"].names
 
-    limit = args.max_samples if args.max_samples is not None else len(test_ds)
+    dataloader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False)
+
+    
     with torch.no_grad():
-        for idx in tqdm(
-            range(min(len(test_ds), limit)), desc=f"{dataset_name} samples"
-        ):
-            sample = test_ds[idx]
-            logits = model(sample["input_values"])
-            raw_logits_list.append(logits)
-            raw_targets_list.append(sample["labels"].unsqueeze(0).cpu())  # (1, D)
+        for batch in tqdm(dataloader, desc=f"Dataset {dataset_name}"):
+            inputs = batch["input_values"].cuda() if torch.cuda.is_available() else batch["input_values"]
+            labels = batch["labels"].cuda() if torch.cuda.is_available() else batch["labels"]
+            logits = model(inputs)  # (B, D)
+            raw_logits_list.append(logits.cpu().flatten(1))
+            raw_targets_list.append(labels.cpu().flatten(1))
 
     raw_logits = torch.cat(raw_logits_list, dim=0).cpu()
     raw_targets = torch.cat(raw_targets_list, dim=0).cpu()
@@ -129,8 +132,8 @@ def process_dataset(dataset_name: str, model, maps, args):
             f"Dataset {dataset_name}: {len(missing_labels)} labels missing pretrain space."
         )
 
-    # Convert to probabilities (softmax over non-zero columns? Use softmax over all for consistency)
-    predictions = torch.softmax(full_logits, dim=1)
+    # Convert to probabilities with sigmoid as multi-label
+    predictions = torch.sigmoid(full_logits)
 
     # Metrics
     metrics = print_metrics(predictions, full_targets.to(torch.int))
@@ -207,6 +210,12 @@ def parse_args():
         help="Data loading workers for BirdSetDataModule",
     )
     p.add_argument(
+        "--batch_size",
+        type=int,
+        default=128,
+        help="Batch size for DataLoader",
+    )
+    p.add_argument(
         "--max-samples",
         type=int,
         default=None,
@@ -229,8 +238,7 @@ def main():
 
         model = Perchv2Model(
             num_classes=FULL_LABEL_SPACE_SIZE,
-            gpu_to_use=args.gpu,
-            map_logits_to_XCL=True,
+            gpu_to_use=args.gpu
         )
     if args.model == "audioprotopnet":
         from uncertainbird.modules.models.audioprotopnet import AudioProtoPNet
@@ -244,7 +252,9 @@ def main():
     if args.model == "convnext_bs":
         from uncertainbird.modules.models.convnext_bs import ConvNeXtBS
 
-        model = ConvNeXtBS(num_classes=FULL_LABEL_SPACE_SIZE)
+        model = ConvNeXtBS(num_classes=FULL_LABEL_SPACE_SIZE).cuda(
+            args.gpu if args.gpu is not None else 0
+        )
 
     print("Building label mappings ...")
     maps = model.get_label_mappings()
