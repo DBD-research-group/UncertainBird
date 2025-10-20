@@ -52,17 +52,20 @@ def load_dump(
     predictions = data["predictions"]
     targets = data["targets"].to(torch.int64)  # ensure targets are integer type
     metadata = data["metadata"]
+    logits = data['logits']
+    metrics = data.get("metrics", {})
 
     if print_stats:
         print(f"Loaded data with {metadata['total_samples']} samples")
         print(f"Predictions shape: {predictions.shape}")
         print(f"Targets shape: {targets.shape}")
 
-    return predictions, targets, metadata
+    return predictions, targets, metadata, logits, metrics
 
 
 def load_data(
     log_dir: Union[str, Path],
+    load_logits: bool = False,
 ) -> Tuple[Dict[str, Dict[str, Any]], torch.Tensor, torch.Tensor, List[str]]:
     data = {}
     dataset_names = sorted(
@@ -89,11 +92,14 @@ def load_data(
             key=lambda f: os.path.getmtime(os.path.join(ds_path, f)), reverse=True
         )
         file_path = os.path.join(ds_path, pkl_files[0])
-        preds, t, metadata = load_dump(file_path)
+        preds, t, metadata, logits , metrics = load_dump(file_path)
         data[ds]["predictions"] = preds
         data[ds]["targets"] = t.int()
         data[ds]["metadata"] = metadata
         data[ds]["color"] = dataset_colors[ds]
+        data[ds]["metrics"] = metrics
+        if load_logits:
+            data[ds]["logits"] = logits
 
     # concatenate
     valid_keys = [
@@ -147,8 +153,13 @@ def prune_non_target_classes(
         # keep the dict structure; only replace the predictions/targets tensors
         preds = data[key]["predictions"][:, targets.sum(dim=0).gt(0)]
         tars = data[key]["targets"][:, targets.sum(dim=0).gt(0)]
+        logits = data[key]["logits"][:, targets.sum(dim=0).gt(0)] if "logits" in data[key] else None
+        if logits is not None:
+            # set 0 logits to -10, to avoid issues with sigmoid later on
+            logits[logits == 0] = -10
         data[key]["predictions"] = preds
         data[key]["targets"] = tars
+        data[key]["logits"] = logits
     return data
 
 
@@ -385,6 +396,50 @@ def compute_bin_stats(
     bin_accuracies = torch.tensor(bin_accuracies)
     bin_counts = torch.tensor(bin_counts)
     return bin_confidences, bin_accuracies, bin_counts
+
+def slit_based_on_first_n_samples(data, n=10):
+    """Create calibration/test split based on using the first n samples for calibration.
+    E.g. n=10 means first 10 samples for calibration, rest for test."""
+    for base_name in list(data.keys()):
+        if base_name.endswith("_cal") or base_name.endswith("_test"):
+            continue
+        entry = data[base_name]
+        if "predictions" not in entry or "targets" not in entry:
+            continue
+
+        preds = entry["predictions"]
+        logits = entry["logits"]
+        tars = entry["targets"]
+        total_samples = preds.shape[0]
+        if total_samples == 0:
+            continue
+
+        cal_size_local = min(n, total_samples)
+        cal_idx_local = torch.arange(cal_size_local)
+        test_idx_local = torch.arange(cal_size_local, total_samples)
+
+        # Adjust (copy) metadata to reflect subset size if present
+        meta = dict(entry.get("metadata", {}))
+        meta["total_samples"] = total_samples
+
+        # Create calibration split
+        data[f"{base_name}_cal"] = {
+            "predictions": preds[cal_idx_local],
+            "targets": tars[cal_idx_local],
+            "logits": logits[cal_idx_local],
+            "metadata": meta,
+            "color": entry.get("color"),
+        }
+
+        # Create test split
+        data[f"{base_name}_test"] = {
+            "predictions": preds[test_idx_local],
+            "targets": tars[test_idx_local],
+            "logits": logits[test_idx_local],
+            "metadata": meta,
+            "color": entry.get("color"),
+        }
+    return data
 
 
 def split_test_set(data, split_ratio=0.1):

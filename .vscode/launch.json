@@ -21,7 +21,7 @@
             "program": "./uncertainbird/scripts/dump_predictions.py",
             "args": [
                 "--model",
-                "birdmae",
+                "perch_v2",
                 "--datasets",
                 "NBP",
                 "--gpu",
