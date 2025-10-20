@@ -127,3 +127,6 @@ class Perchv2Model(UncertrainBirdModel):
         logits = torch.from_numpy(logits_np)  # (1, P)
 
         return logits
+
+    def transform_logits_to_probs(self, logits):
+        return torch.softmax(logits, dim=1)

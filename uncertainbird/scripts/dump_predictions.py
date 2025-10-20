@@ -118,6 +118,7 @@ def process_dataset(dataset_name: str, model, maps, args):
 
     raw_logits = torch.cat(raw_logits_list, dim=0).cpu()
     raw_targets = torch.cat(raw_targets_list, dim=0).cpu()
+    raw_predictions = model.transform_logits_to_probs(raw_logits)
 
     # Expand to full space
     full_logits, missing_labels = expand_logits(
@@ -126,14 +127,15 @@ def process_dataset(dataset_name: str, model, maps, args):
     full_targets = expand_targets(
         raw_targets, ds_labels, maps["xcl"], FULL_LABEL_SPACE_SIZE
     )
+    predictions, missing_labels = expand_logits(
+        raw_predictions, ds_labels, maps, FULL_LABEL_SPACE_SIZE
+    )
 
     if missing_labels:
         print(
             f"Dataset {dataset_name}: {len(missing_labels)} labels missing pretrain space."
         )
 
-    # Convert to probabilities with sigmoid as multi-label
-    predictions = torch.sigmoid(full_logits)
 
     # Metrics
     metrics = print_metrics(predictions, full_targets.to(torch.int))
@@ -248,7 +250,9 @@ def main():
     if args.model == "birdmae":
         from uncertainbird.modules.models.birdmae import BirdMAE
 
-        model = BirdMAE(num_classes=FULL_LABEL_SPACE_SIZE)
+        model = BirdMAE(num_classes=FULL_LABEL_SPACE_SIZE).cuda(
+            args.gpu if args.gpu is not None else 0
+        )
     if args.model == "convnext_bs":
         from uncertainbird.modules.models.convnext_bs import ConvNeXtBS
 

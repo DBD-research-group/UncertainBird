@@ -348,7 +348,7 @@ def _mcs_compute(
         acc_bin, conf_bin, prop_bin = _binning_bucketize(
             confidences, accuracies, bin_boundaries
         )
-
+    
     if norm == "l1":
         return torch.sum((conf_bin - acc_bin) * prop_bin)
     if norm == "max":
