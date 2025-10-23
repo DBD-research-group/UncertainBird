@@ -153,10 +153,21 @@ def prune_non_target_classes(
         # keep the dict structure; only replace the predictions/targets tensors
         preds = data[key]["predictions"][:, targets.sum(dim=0).gt(0)]
         tars = data[key]["targets"][:, targets.sum(dim=0).gt(0)]
-        logits = data[key]["logits"][:, targets.sum(dim=0).gt(0)] if "logits" in data[key] else None
-        if logits is not None:
-            # set 0 logits to -10, to avoid issues with sigmoid later on
-            logits[logits == 0] = -10
+        logits = data[key].get("logits")
+        if isinstance(logits, torch.Tensor):
+            class_mask = targets.sum(dim=0).gt(0)
+            logits = logits[:, class_mask]
+            zero_mask = preds == 0
+            logits = torch.where(
+            zero_mask,
+            torch.full_like(logits, float("-1e9")),
+            logits,
+            )
+        else:
+            logits = logits
+        
+
+
         data[key]["predictions"] = preds
         data[key]["targets"] = tars
         data[key]["logits"] = logits

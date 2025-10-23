@@ -16,6 +16,46 @@ from birdset.modules.metrics import cmAP
 # potential circular import with metrics configuration. We'll import them lazily
 # inside the functions that need them.
 
+# ---- Figure sizing helpers (SCITEPRESS columns) ----
+CM = 1/2.54
+COL_W = 7.5 * CM        # 1-column width
+TWO_COL_W = 15.8 * CM   # 2-column width
+
+def scitepress_style(columns=1, height_cm=6.0, base_pt=14):
+    """Configure matplotlib for SCITEPRESS column widths without LaTeX."""
+    width = COL_W if columns == 1 else TWO_COL_W
+    plt.rcParams.update({
+        "text.usetex": False,
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "Nimbus Roman", "TeX Gyre Termes", "STIXGeneral"],
+        "mathtext.fontset": "stix",
+        "mathtext.rm": "STIXGeneral",
+        "mathtext.it": "STIXGeneral:italic",
+        "mathtext.bf": "STIXGeneral:bold",
+
+        # Scaled for 7.5 cm figures
+        "font.size": base_pt,          # ~14 is good for 7.5 cm; use 10–11 for two-column
+        "axes.titlesize": base_pt,
+        "axes.labelsize": base_pt - 1,
+        "xtick.labelsize": base_pt - 2,
+        "ytick.labelsize": base_pt - 2,
+        "legend.fontsize": base_pt - 3,
+
+        "axes.linewidth": 0.8,
+        "lines.linewidth": 1.2,
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "xtick.major.size": 3,
+        "ytick.major.size": 3,
+        "legend.frameon": False,
+
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    })
+    # set dpi to 500
+    plt.rcParams["figure.dpi"] = 500
+    fig, ax = plt.subplots(figsize=(width, height_cm * CM), constrained_layout=True)
+    return fig, ax
 
 def plot_pr_curve(predictions, targets, ax=None):
     """Plot Precision-Recall curve in the multilabel setting."""
@@ -167,7 +207,7 @@ def plot_combined_reliability_diagram(
     Returns:
         ax: The matplotlib axis containing the combined reliability diagram.
     """
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(8, 6))
 
     for dataset in data:
         predictions = data[dataset]["predictions"]

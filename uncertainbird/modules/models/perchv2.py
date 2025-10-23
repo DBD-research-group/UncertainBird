@@ -129,4 +129,7 @@ class Perchv2Model(UncertrainBirdModel):
         return logits
 
     def transform_logits_to_probs(self, logits):
-        return torch.softmax(logits, dim=1)
+        threshold = -1000.0
+        min_value = torch.finfo(logits.dtype).min
+        safe_logits = logits.masked_fill(logits < threshold, min_value)
+        return torch.softmax(safe_logits, dim=-1)
