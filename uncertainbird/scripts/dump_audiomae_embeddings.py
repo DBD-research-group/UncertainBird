@@ -41,11 +41,14 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchaudio.compliance import kaldi
+from tqdm import tqdm
+
+
 
 
 # Local imports (repository specific)
 try:
-    from uncertainbird.datamodule.BirdSetEvalDataModule import BirdSetEvalDataModule
+    from birdset.datamodule.birdset_datamodule import BirdSetDataModule
     from birdset.datamodule.base_datamodule import (
         DatasetConfig,
         BirdSetTransformsWrapper,
@@ -80,7 +83,7 @@ def build_model(device: torch.device) -> torch.nn.Module:
 def waveform_to_fbank_1024x128(wave: torch.Tensor) -> torch.Tensor:
     """Convert a mono 16 kHz waveform (T,) to (1024, 128) Kaldi fbank with padding/truncation."""
     # torchaudio.compliance.kaldi.fbank expects shape (channel, num_samples)
-    wave = wave.detach().cpu().unsqueeze(0)  # (1, T)
+    wave = wave.detach().cpu()  # (1, T)
     melspec = kaldi.fbank(
         wave,
         htk_compat=True,
@@ -133,7 +136,7 @@ def process_subset(
     base_out.mkdir(parents=True, exist_ok=True)
 
     # Prepare data module for multilabel with 16kHz waveform output
-    dm = BirdSetEvalDataModule(
+    dm = BirdSetDataModule(
         dataset=DatasetConfig(
             data_dir=args.data_dir,
             hf_path="DBD-research-group/BirdSet",
@@ -151,6 +154,7 @@ def process_subset(
         ),
     )
     dm.prepare_data()
+    dm.setup('fit')
     dm.setup("test")  # populates train and test (mapped from test_5s)
 
     datasets = {"train": dm.train_dataset, "test": dm.test_dataset}
@@ -167,23 +171,27 @@ def process_subset(
 
         clip_list: List[torch.Tensor] = []
         frame_list: List[torch.Tensor] = []
+        labels_list: List[torch.Tensor] = []
 
-        for batch in dl:
+        for batch in tqdm(dl, desc=f"Dataset {subset_name} Split {split_name}"):
             wav = batch["input_values"]  # (B, T) 16 kHz
+            target = batch["labels"]  # (B, num_classes), unused
             # Compute fbank on CPU, then send to device once stacked
             fb = batch_fbank_from_waveforms(wav)
             clip_emb, frame_emb = forward_audiomae(model, fb, device)
             clip_list.append(clip_emb)
             frame_list.append(frame_emb)
+            labels_list.append(target)
 
         clip_embeddings = torch.cat(clip_list, dim=0)
         frame_embeddings = torch.cat(frame_list, dim=0)
         logits = clip_embeddings.clone()  # no classifier; store clip embedding as logits for convenience
+        labels = torch.cat(labels_list, dim=0)
 
         # Save individual tensors
-        torch.save(clip_embeddings, out_dir / "clip_embeddings.pt")
-        torch.save(frame_embeddings, out_dir / "frame_embeddings.pt")
-        torch.save(logits, out_dir / "logits.pt")
+        # torch.save(clip_embeddings, out_dir / "clip_embeddings.pt")
+        # torch.save(frame_embeddings, out_dir / "frame_embeddings.pt")
+        # torch.save(logits, out_dir / "logits.pt")
 
         # Metadata + pickle bundle (optional)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -198,8 +206,9 @@ def process_subset(
         }
         bundle = {
             "clip_embeddings": clip_embeddings,
-            "frame_embeddings": frame_embeddings,
-            "logits": logits,
+            "labels": labels,
+            # "frame_embeddings": frame_embeddings,
+            # "logits": logits,
             "metadata": meta,
         }
         with open(out_dir / f"audiomae_embeddings_{timestamp}.pkl", "wb") as f:
@@ -244,7 +253,7 @@ def parse_args():
         help="Data loading workers for BirdSetDataModule",
     )
     p.add_argument(
-        "--batch_size",
+        "--batch-size",
         type=int,
         default=64,
         help="Batch size for DataLoader",

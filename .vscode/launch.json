@@ -33,6 +33,26 @@
             "justMyCode": false
         },
         {
+            "name": "Debug Dump AudioMAE Embeddings",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./uncertainbird/scripts/dump_audiomae_embeddings.py",
+            "args": [
+                "--datasets",
+                "NBP",
+                "--gpu",
+                "0",
+                "--output-dir",
+                "./logs/embeddings/audiomae",
+                "--data-dir",
+                "/workspace/data_birdset",
+                "--batch-size",
+                "32"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
             "name": "Python Debugger: Current File with Arguments",
             "type": "debugpy",
             "request": "launch",
