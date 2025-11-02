@@ -2051,6 +2051,19 @@ wheels = [
 ]
 
 [[package]]
+name = "mystmd"
+version = "1.6.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nodeenv" },
+    { name = "platformdirs" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f9/4d/1dbcedee69103807fad02844cc25833a6e1073ffd0ecc515380f70c00308/mystmd-1.6.3.tar.gz", hash = "sha256:83cf01e89754939603e99d8cb393617ff1c6997744e60dcbaed5a18d26dd07c8", size = 2791338, upload-time = "2025-10-10T23:28:11.361Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/5c/90c22a1c3a7f1eaa69fedd8a4b604cae1c67754f0aced38921547a5d09a5/mystmd-1.6.3-py3-none-any.whl", hash = "sha256:404b79db0a4587910e1d23d6ce93cd864d5dfa824f89cd910e1e4e21594ca9b2", size = 2823036, upload-time = "2025-10-10T23:28:09.559Z" },
+]
+
+[[package]]
 name = "nbclient"
 version = "0.10.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2473,11 +2486,11 @@ wheels = [
 
 [[package]]
 name = "platformdirs"
-version = "4.4.0"
+version = "4.2.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/23/e8/21db9c9987b0e728855bd57bff6984f67952bea55d6f75e055c46b5383e8/platformdirs-4.4.0.tar.gz", hash = "sha256:ca753cf4d81dc309bc67b0ea38fd15dc97bc30ce419a7f58d13eb3bf14c4febf", size = 21634, upload-time = "2025-08-26T14:32:04.268Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f5/52/0763d1d976d5c262df53ddda8d8d4719eedf9594d046f117c25a27261a19/platformdirs-4.2.2.tar.gz", hash = "sha256:38b7b51f512eed9e84a22788b4bce1de17c0adb134d6becb09836e37d8654cd3", size = 20916, upload-time = "2024-05-15T03:18:23.372Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/4b/2028861e724d3bd36227adfa20d3fd24c3fc6d52032f4a93c133be5d17ce/platformdirs-4.4.0-py3-none-any.whl", hash = "sha256:abd01743f24e5287cd7a5db3752faf1a2d65353f38ec26d98e25a6db65958c85", size = 18654, upload-time = "2025-08-26T14:32:02.735Z" },
+    { url = "https://files.pythonhosted.org/packages/68/13/2aa1f0e1364feb2c9ef45302f387ac0bd81484e9c9a4c5688a322fbdfd08/platformdirs-4.2.2-py3-none-any.whl", hash = "sha256:2d7a1657e36a80ea911db832a8a6ece5ee53d8de21edd5cc5879af6530b1bfee", size = 18146, upload-time = "2024-05-15T03:18:21.209Z" },
 ]
 
 [[package]]
@@ -3747,6 +3760,7 @@ dependencies = [
     { name = "lightning-uq-box" },
     { name = "matplotlib" },
     { name = "ml-collections" },
+    { name = "mystmd" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pillow" },
@@ -3797,6 +3811,7 @@ requires-dist = [
     { name = "lightning-uq-box", specifier = ">=0.2.0" },
     { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "ml-collections", specifier = ">=1.1.0" },
+    { name = "mystmd", specifier = ">=1.6.3" },
     { name = "numpy", specifier = ">=1.26.4" },
     { name = "pandas", specifier = "==2.1.3" },
     { name = "pillow", specifier = "==10.1.0" },

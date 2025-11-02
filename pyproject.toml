@@ -46,6 +46,7 @@ dependencies = [
     "etils>=1.13.0",
     "importlib-resources>=6.5.2",
     "birdset",
+    "mystmd>=1.6.3",
 ]
 
 [project.optional-dependencies]

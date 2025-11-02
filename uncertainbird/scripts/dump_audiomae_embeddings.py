@@ -101,12 +101,25 @@ def waveform_to_fbank_1024x128(wave: torch.Tensor) -> torch.Tensor:
     return melspec  # (1024, 128)
 
 
-def batch_fbank_from_waveforms(batch_wav: torch.Tensor) -> torch.Tensor:
-    """Compute a batch of (B, 1, 1024, 128) fbanks from (B, T) waveforms (CPU ops)."""
-    fbanks = [waveform_to_fbank_1024x128(w) for w in batch_wav]
-    fb = torch.stack(fbanks, dim=0)  # (B, 1024, 128)
-    fb = fb.view(fb.shape[0], 1, 1024, 128)
-    return fb
+def fbank_collate(batch: list) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """Collate list of samples into (fbanks, labels).
+
+    - Computes fbank 1024x128 per item in worker processes.
+    - Returns fbanks of shape (B, 1, 1024, 128) and stacked labels if present.
+    """
+    fbanks = [waveform_to_fbank_1024x128(sample["input_values"]) for sample in batch]
+    fb = torch.stack(fbanks, dim=0).view(len(fbanks), 1, 1024, 128)
+
+    # Some datasets provide 'labels'; preserve if present
+    labels = None
+    if "labels" in batch[0]:
+        lbls = [sample["labels"] for sample in batch]
+        try:
+            labels = torch.stack(lbls, dim=0)
+        except Exception:
+            # Fallback if labels are not tensors of equal shape
+            labels = None
+    return fb, labels
 
 
 def forward_audiomae(model: torch.nn.Module, fb_batch: torch.Tensor, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -117,12 +130,12 @@ def forward_audiomae(model: torch.nn.Module, fb_batch: torch.Tensor, device: tor
         clip_emb = model(fb_batch)  # (B, 768)
 
         # Frame-level embeddings via forward_features -> patches -> pool across mel dimension
-        feats = model.forward_features(fb_batch)  # (B, 513, 768)
-        feats = feats[:, 1:]  # remove CLS -> (B, 512, 768)
-        feats = feats.unflatten(1, (1024 // 16, 128 // 16))  # (B, 64, 8, 768)
-        frame_emb = feats.mean(2)  # (B, 64, 768)
+        # feats = model.forward_features(fb_batch)  # (B, 513, 768)
+        # feats = feats[:, 1:]  # remove CLS -> (B, 512, 768)
+        # feats = feats.unflatten(1, (1024 // 16, 128 // 16))  # (B, 64, 8, 768)
+        # frame_emb = feats.mean(2)  # (B, 64, 768)
 
-    return clip_emb.detach().cpu(), frame_emb.detach().cpu()
+    return clip_emb.detach().cpu()
 
 
 def process_subset(
@@ -167,26 +180,31 @@ def process_subset(
         out_dir = base_out / split_name
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        dl = DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
+        dl = DataLoader(
+            ds,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.num_workers,
+            collate_fn=fbank_collate,
+            pin_memory=(device.type == "cuda"),
+            prefetch_factor=8
+        )
 
         clip_list: List[torch.Tensor] = []
         frame_list: List[torch.Tensor] = []
         labels_list: List[torch.Tensor] = []
 
-        for batch in tqdm(dl, desc=f"Dataset {subset_name} Split {split_name}"):
-            wav = batch["input_values"]  # (B, T) 16 kHz
-            target = batch["labels"]  # (B, num_classes), unused
-            # Compute fbank on CPU, then send to device once stacked
-            fb = batch_fbank_from_waveforms(wav)
-            clip_emb, frame_emb = forward_audiomae(model, fb, device)
+        for fb, target in tqdm(dl, desc=f"Dataset {subset_name} Split {split_name}"):
+            clip_emb = forward_audiomae(model, fb, device)
             clip_list.append(clip_emb)
-            frame_list.append(frame_emb)
-            labels_list.append(target)
+            # frame_list.append(frame_emb)
+            if target is not None:
+                labels_list.append(target)
 
         clip_embeddings = torch.cat(clip_list, dim=0)
-        frame_embeddings = torch.cat(frame_list, dim=0)
+        # frame_embeddings = torch.cat(frame_list, dim=0)
         logits = clip_embeddings.clone()  # no classifier; store clip embedding as logits for convenience
-        labels = torch.cat(labels_list, dim=0)
+        labels = torch.cat(labels_list, dim=0) if labels_list else None
 
         # Save individual tensors
         # torch.save(clip_embeddings, out_dir / "clip_embeddings.pt")
@@ -200,7 +218,7 @@ def process_subset(
             "split": split_name,
             "total_samples": int(clip_embeddings.shape[0]),
             "clip_embedding_shape": list(clip_embeddings.shape),
-            "frame_embedding_shape": list(frame_embeddings.shape),
+            # "frame_embedding_shape": list(frame_embeddings.shape),
             "logits_shape": list(logits.shape),
             "model": "gaunernst/vit_base_patch16_1024_128.audiomae_as2m",
         }
@@ -249,13 +267,13 @@ def parse_args():
     p.add_argument(
         "--num-workers",
         type=int,
-        default=4,
+        default=16,
         help="Data loading workers for BirdSetDataModule",
     )
     p.add_argument(
         "--batch-size",
         type=int,
-        default=64,
+        default=256,
         help="Batch size for DataLoader",
     )
     return p.parse_args()

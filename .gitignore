@@ -189,3 +189,5 @@ lightning_logs/
 settings.json
 
 models/*
+# MyST build outputs
+_build
