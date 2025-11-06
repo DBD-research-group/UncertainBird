@@ -4,7 +4,7 @@ Understanding and quantifying distribution shift between datasets is essential f
 
 ## What do we mean by “distribution shift”?
 
-Let Dataset A and Dataset B be drawn from joint distributions $p_A(x, y)$ and $p_B(x, y)$ over inputs $x$ and labels $y$. We use the usual marginals and conditionals:
+Let Dataset A and Dataset B be drawn from joint distributions $p_A(x, y)$ and $p_B(x, y)$ over inputs $x$ and labels $y$. We use the usual marginals and conditionals This is a link in Markdown [1] :
 
 - $p_A(x)$, $p_B(x)$: input (covariate) distributions in A and B.
 - $p_A(y)$, $p_B(y)$: label prior distributions in A and B.
@@ -19,7 +19,6 @@ Shift can arise via:
 - Concept shift: $p(y\mid x)$ itself changes (e.g., new labeling rules, sensors, environments) [1].
 
 In practice, multiple types co-occur. The goal is to characterize the differences and assess their impact on model performance and uncertainty.
-
 
 
 ## Methods to quantify shift
@@ -40,17 +39,17 @@ $\operatorname{MMD}^2(\mathcal{D}_S, \mathcal{D}_T) = \mathbb{E}_{x,x'\sim S}[k(
 An RKHS (Reproducing Kernel Hilbert Space) is a Hilbert space of functions associated with a positive‑definite kernel \(k\). It has two key properties:
 
 - Reproducing property: for any \(f\) in the space and any \(x\), evaluation is an inner product
-   \[
+   $
    f(x) = \langle f,\; k(\cdot, x) \rangle_{\mathcal{H}_k}.
-   \]
-- Feature map view: there exists (possibly infinite‑dimensional) \(\varphi(x)\) with
-   \(k(x,x') = \langle \varphi(x), \varphi(x') \rangle\), enabling the kernel trick.
+   $
+- Feature map view: there exists (possibly infinite‑dimensional) $\varphi(x)$ with
+   $k(x,x') = \langle \varphi(x), \varphi(x') \rangle$, enabling the kernel trick.
 
-Kernel mean embeddings map a probability distribution \(p\) to its RKHS mean
-\(\mu_p := \mathbb{E}_{x\sim p}[\,k(\cdot, x)\,] \in \mathcal{H}_k\). The MMD is the RKHS distance between embeddings:
-\[
+Kernel mean embeddings map a probability distribution $p$ to its RKHS mean
+$\mu_p := \mathbb{E}_{x\sim p}[\,k(\cdot, x)\,] \in \mathcal{H}_k$. The MMD is the RKHS distance between embeddings:
+$
 \operatorname{MMD}(p,q) = \|\mu_p - \mu_q\|_{\mathcal{H}_k}.
-\]
+$
 With a characteristic kernel (e.g., Gaussian/RBF), this distance is a true metric on distributions, which is why MMD is a principled two‑sample test [4].
 
 ### 2) Optimal Transport / Wasserstein distance
