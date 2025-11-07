@@ -135,3 +135,47 @@ def sinkhorn_ot(x: torch.Tensor, y: torch.Tensor, eps: float = 0.05, iters: int 
     P = torch.diag(u) @ K @ torch.diag(v)
     cost = torch.sum(P * C)
     return float(cost.item())
+
+def compute_metric_per_class(x: torch.Tensor, x_targets: torch.Tensor,
+                             y: torch.Tensor, y_targets: torch.Tensor,
+                             metric_fn,
+                             min_per_class: int,
+                             max_per_class: int = 500,
+                             seed: int = 42) -> float:
+    '''Compute metric_func between x and y per class defined in x_targets and y_targets and than mean over classes.
+    If a class is missing in either x_targets or y_targets, the result for that class is NaN.
+    Args:
+        x: Tensor of shape (num_samples_x, features)
+        x_targets: Tensor of shape (num_samples_x, num_classes)
+        y: Tensor of shape (num_samples_y, features)
+        y_targets: Tensor of shape (num_samples_y, num_classes)
+        metric_func: function that takes two Tensors (x_c, y_c) and returns a float
+    Returns:
+        float: mean metric over classes'''
+   
+    results = {}
+    rng = torch.Generator().manual_seed(seed)
+    x_targets = x_targets.int()
+    y_targets = y_targets.int()
+    # iterate over classes
+    for c in range(x_targets.shape[1]):
+        # try to select min_per_class samples from x
+        x_mask = x_targets[:, c] == 1
+        x_c = x[x_mask]
+        if x_c.shape[0] < min_per_class:
+            continue
+        # try to select min_per_class samples from y
+        y_mask = y_targets[:, c] == 1
+        y_c = y[y_mask]
+        if y_c.shape[0] < min_per_class:
+            continue
+        # sample max_per_class samples from x_c and y_c and min the number of available samples
+        n_x = min(x_c.shape[0], max_per_class)
+        n_y = min(y_c.shape[0], max_per_class)
+        x_c_sampled = x_c[torch.randperm(x_c.shape[0], generator=rng)[:n_x]]
+        y_c_sampled = y_c[torch.randperm(y_c.shape[0], generator=rng)[:n_y]]
+        # compute metric
+        metric = metric_fn(x_c_sampled, y_c_sampled)
+        results[c] = metric
+
+    return float(torch.mean(torch.tensor(list(results.values()))))
