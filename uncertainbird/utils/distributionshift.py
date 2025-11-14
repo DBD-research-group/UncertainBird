@@ -1,6 +1,7 @@
 import pickle
 import torch
 from pathlib import Path
+from torchaudio.functional import frechet_distance as fid_torchaudio
 
 # Helpers: load latest pickle for (subset, split) and sample embeddings
 
@@ -73,7 +74,6 @@ def median_heuristic_gamma(x: torch.Tensor, y: torch.Tensor) -> float:
         g = 1.0 / (2.0 * (med.item() + 1e-8))
     return g
 
-
 def mmd_rbf(x: torch.Tensor, y: torch.Tensor) -> float:
     gamma = median_heuristic_gamma(x, y)
     Kxx = rbf_kernel(x, x, gamma)
@@ -107,6 +107,22 @@ def frechet_distance(x: torch.Tensor, y: torch.Tensor) -> float:
     tr_cov2 = torch.trace(cov2)
     tr_sqrt = torch.sum(torch.sqrt(eigvals + eps))
     fid = (diff @ diff).item() + (tr_cov1 + tr_cov2 - 2.0 * tr_sqrt).item()
+    return float(fid)
+
+
+def fid_distance(x: torch.Tensor, y: torch.Tensor) -> float:
+    # Use torchaudio implementation
+    mu1 = x.mean(dim=0)
+    mu2 = y.mean(dim=0)
+    x_c = x - mu1
+    y_c = y - mu2
+    # cov with unbiased=False for stability
+    cov1 = (x_c.T @ x_c) / (x.shape[0] - 1)
+    cov2 = (y_c.T @ y_c) / (y.shape[0] - 1)
+    eps = 1e-6
+    cov1 = cov1 + eps * torch.eye(cov1.shape[0], device=cov1.device)
+    cov2 = cov2 + eps * torch.eye(cov2.shape[0], device=cov2.device)
+    fid = fid_torchaudio(mu1, cov1, mu2, cov2)
     return float(fid)
 
 
