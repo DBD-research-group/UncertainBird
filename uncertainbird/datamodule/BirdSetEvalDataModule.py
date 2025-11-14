@@ -59,15 +59,15 @@ class BirdSetEvalDataModule(BirdSetDataModule):
                 {split: dataset[split] for split in ["train", "test_5s"]}
             )
 
-            # log.info(">> Mapping train data.")
-            # dataset["train"] = dataset["train"].map(
-            #     self.event_mapper,
-            #     remove_columns=["audio"],
-            #     batched=True,
-            #     batch_size=300,
-            #     num_proc=self.dataset_config.n_workers,
-            #     desc="Train event mapping",
-            # )
+            log.info(">> Mapping train data.")
+            dataset["train"] = dataset["train"].map(
+                self.event_mapper,
+                remove_columns=["audio"],
+                batched=True,
+                batch_size=300,
+                num_proc=self.dataset_config.n_workers,
+                desc="Train event mapping",
+            )
 
             dataset = dataset.rename_column("ebird_code_multilabel", "labels")
 
