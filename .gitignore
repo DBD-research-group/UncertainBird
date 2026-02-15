@@ -189,3 +189,9 @@ lightning_logs/
 settings.json
 
 models/*
+
+# latex
+*.aux
+*.fdb_latexmk
+*.gz
+*.fls

@@ -1,0 +1,306 @@
+\documentclass[
+  portrait,
+  % landscape,
+  a0paper%,
+  %draft
+]
+{baposter}
+%
+% load packages
+% already loaded some useful packages for figures, tables and layout
+% not all are needed to run this minimal example
+\usepackage{graphicx}
+\usepackage[percent]{overpic}
+\usepackage{siunitx}
+\usepackage{tabto}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage{qrcode}
+\usepackage{ragged2e}
+% add additional packages you need here
+%
+% for now usig bibitem, but if you want ...
+%\usepackage[backend=biber]{biblatex}
+%
+% customizing
+\newlength{\mytextsize}
+\newlength{\titlewidth}
+\newcommand\e{\cdot 10^}
+\newcommand{\boxtextsize}{\normalsize}
+\setlength{\unitlength}{1.0cm}
+%
+% define cern blue
+% \definecolor{cernblue}{cmyk}{100,75,0,0} %for text / color / logo
+\definecolor{cernblue}{HTML}{083577} %for text / color / logo
+\definecolor{tfblue}{HTML}{083577} %for text / color / logo
+
+% fonts
+\usepackage[scaled]{helvet}
+\renewcommand*\familydefault{\sfdefault}
+%
+%
+%##################################################################################
+\begin{document}
+%##################################################################################
+\begin{poster}
+  {
+    % options
+    grid=false,%true,
+    background=plain,
+    bgColorOne=white,
+    columns=6, % for flexibility changing 2/3 columns with columnspan
+    eyecatcher=false,
+    borderColor=cernblue,
+    headerColorOne=cernblue, %white,
+    headershade=plain,
+    %headerColorTwo=white,
+    headerborder=open,
+    % for rectangular boxes change the next two options, rectangular header will cause left aligning of box title
+    textborder=rounded, %rectangle,
+    headershape=rounded, %rectangle,
+    headerfont=\bf\Large,
+    boxshade=none,
+    headerFontColor=white
+  }
+  {
+    %eyecatcher ...
+  }
+  {
+    %poster title (explicit width avoids Illegal unit of measure inside picture)
+    \hspace*{-0.5mm}
+    \begin{picture}(23.7, 3)
+      \fboxsep0pt
+      % \put(-0.196, -0.6){\colorbox{cernblue}{\rule[96pt]{675.82pt}{0pt}}}
+      \thicklines
+      % minipage box for title and authors
+      \put(2.55, 2.35){
+        \begin{minipage}[t][96pt]{17.5cm}
+          % centering
+          \begin{center}
+            % Title
+            % use \LARGE instead of \Huge for long titles, you might need to modify distances or number of lines
+            % for one line title
+            %\ \vspace{0.15cm}\\
+            %\huge\bf\color{white}\selectfont Single Line Title \vspace{0.4cm}\\
+            % for two line title
+            \huge\bf\color{tfblue}\selectfont Uncertainty Calibration of \\ Multi-Label Bird Sound Classifiers \vspace{0.15cm} \\
+            % Authors
+            \vspace{0.2cm}
+            \small\color{black} Raphael Schwinger, Ben McEwen, Vincent S.\ Kather, Ren\'e Heinrich, Lukas Rauch, and Sven Tomforde \\
+            \small INS Kiel University, Tilburg University, Naturalis Biodiversity Center, Fraunhofer IEE, University of Kassel \\
+            \small\textit{raphael.schwinger@cs.uni-kiel.de}
+
+          \end{center}
+      \end{minipage}}
+      %
+      % cern logo
+      % left:
+      %\put(0.32,-0.24){\includegraphics[height=75pt]{logos/LogoOutline-White.eps}}
+      % right:
+      \put(20.52,0.4){\includegraphics[height=75pt]{logos/logo.png}}
+      \put(0.0,1.75){\includegraphics[height=35pt]{logos/cau-lila.png}}
+      %% DO NOT FORGET to replace QR code link and Poster ID !
+      % % poster id + qr code, for example at IPAC
+      % Modify links!!!
+      % left
+      % \put(0.18,1.1){\color{black}\qrcode[hyperlink,height=.08\textwidth]{https://gitlab.cern.ch/mkoopman/templates}}
+      % \put(0.2,-0.25){\large\bf\color{black}Poster ID}
+      % right
+      %\put(21.02,-0.25){\large\bf\color{white}Poster ID}
+      %\put(21,1.1){\color{white}\qrcode[hyperlink,height=.08\textwidth]{https://gitlab.cern.ch/mkoopman/templates}}
+    \end{picture}
+  }
+  {
+    %poster authors, already in title
+  }
+  {
+    %logo, already in title
+  }
+  %
+  % three part footnote box with references, logos, contact infos
+  %
+  \headerbox{}{headershape=rectangle, name=foottext, column=0, span=6, above=bottom, textborder=none, borderColor=cernblue,  boxheaderheight=1pt}{
+    % 1. minipage for references
+    \begin{minipage}[t][3.6cm]{.32\textwidth}
+      \vspace{.3cm}
+      $\quad$\textbf{\small\color{tfblue}KEY REFERENCES}\footnotesize\\
+      \renewcommand{\section}[2]{}
+      \begin{thebibliography}{9}
+        \vspace{-0.1cm}
+        \begin{tiny}
+          \vspace{-0.1cm}
+          \bibitem{birdset}
+          L. Rauch et al., ``BirdSet: A Large-Scale Dataset for Audio Classification in Avian Bioacoustics''. arXiv, 2024, doi: 10.48550/arXiv.2403.10380.
+          \bibitem{guo2017calibration}
+          C. Guo et al., ``On Calibration of Modern Neural Networks''. ICML, 2017.
+          \bibitem{merrienboerPerch20Bittern2025}
+          J. Merri\"enboer et al., ``Perch 2.0: Bittern and beyond''. arXiv, 2025.
+          \bibitem{kahlBirdNET}
+          S. Kahl et al., ``BirdNET: A deep learning solution for avian diversity monitoring''. Ecological Informatics, 61:101236, 2021.
+          \bibitem{HEINRICH2025103081}
+          R. Heinrich et al., ``AudioProtoPNet: An interpretable deep learning model for bird sound classification''. arXiv, 2025.
+          \bibitem{stowell_computational_2022}
+          D. Stowell, ``Computational Bioacoustics with Deep Learning: A Review and Roadmap''. PeerJ, 10, 2022.
+        \end{tiny}
+      \end{thebibliography}
+    \end{minipage}
+    \hfill\vline\hfill
+    %
+    % 2. minipage for logos
+    % modify to show your partners and current conference logo!
+    \begin{minipage}[t][3.6cm]{.32\textwidth}
+      \vspace{.3cm}
+      $\quad$\textbf{\small\color{cernblue}ACKNOWLEDGEMENT}\\[0.5ex]
+      \footnotesize\RaggedRight
+      % \begin{minipage}{.32\textwidth}
+      %   \begin{center}
+      %   \includegraphics[width=.75\textwidth]{logos/LogoOutline-Blue.eps}
+      %   \end{center}
+      % \end{minipage}
+      % \begin{minipage}{.32\textwidth}
+      %   \begin{center}
+      %     \includegraphics[width=\textwidth]{logos/IPAC23_logo_color.png}
+      %   \end{center}
+      % \end{minipage}
+      % \begin{minipage}{.32\textwidth}
+      %   \begin{center}
+      %   %\includegraphics[width=.75\textwidth]{logos/}
+      %   \end{center}
+      % \end{minipage}
+      %    \vspace*{-0.5cm}
+      %    \begin{minipage}{.1\textwidth}
+      %      \hspace{\textwidth}
+      % \end{minipage}
+      %    \begin{minipage}{.33\textwidth}
+      %   \begin{center}
+      %   %\includegraphics[width=\textwidth]{logos/}
+      %   \end{center}
+      % \end{minipage}
+      %    \begin{minipage}{.1\textwidth}
+      %      \hspace{\textwidth}
+      % \end{minipage}
+      %    \begin{minipage}{.33\textwidth}
+      %   \begin{center}
+      %   %\includegraphics[width=\textwidth]{logos/}
+      %   \end{center}
+      % \end{minipage}
+      %    \begin{minipage}{.1\textwidth}
+      %      \hspace{\textwidth}
+      % \end{minipage}
+      This research has been funded by the German Ministry for the Environment, Nature Conservation, Nuclear Safety, and Consumer Protection through the project "DeepBirdDetect - Automatic Bird Detection of Endangered Species Using Deep Neural Networks" (67KI31040C).
+    \end{minipage}
+    \hfill\vline\hfill
+    %
+    % 3. mini page for contact info
+    \begin{minipage}[t][3.6cm]{.32\textwidth}
+      \vspace{0.3cm}
+      $\quad$\textbf{\small\color{cernblue}MORE INFORMATION} \vspace{0.15cm}\\
+      \begin{minipage}{\textwidth}
+        \begin{center}
+          % DO NOT FORGET to replace link by link to your or cern website!
+          \qrcode[hyperlink,height=.35\textwidth]{https://github.com/DBD-research-group/UncertainBird}
+        \end{center}
+      \end{minipage}
+      % \begin{minipage}{.64\textwidth}
+      %    \vspace{.3cm}
+      %   \color{cernblue}
+      %   \footnotesize
+      %    % insert your details!
+      %   \textbf{Main Author}\\
+      %    CERN -- XX Department \\
+      %    Group \\
+      %    Section \\$\;$\\
+      %   main.auhtor@cern.ch\\
+      %   %Fon: +xx xxxxx xxxxx\\
+      % \end{minipage}
+      \vspace{0.3cm}
+      \color{cernblue}
+      \small
+      \begin{center}
+        \texttt{github.com/}\\[0.5ex]
+        \texttt{DBD-research-group/}\\[0.2ex]
+        \texttt{UncertainBird}
+      \end{center}
+    \end{minipage}
+  }
+  %
+  % and now the standard boxes on the poster
+  % choose between 2 or 3 column layout here!
+  % for 2 column layout use column=0 and column=3, respectively (always span=3)
+  % for 3 column layout use column=0, column=2 and column=4, respectively (always span=2)
+  % or go with 6 columns and column span ...
+  %
+  % in the following is here a simple example for two column layout with
+  % three boxes on the left: motivation, left box 1, left box 2 and
+  % two boxes on the right: large right box, summary
+  %
+  \headerbox{Introduction}{name=motivation, column=0, row=0, span=3}{
+    \boxtextsize
+    \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
+      \item Passive acoustic monitoring (PAM) enables large-scale biodiversity monitoring, but reliable species detection requires well-calibrated uncertainty estimates from deep learning classifiers
+      \item Calibration is challenged by overlapping vocalisations, long-tailed species distributions, and distribution shifts between training and deployment data
+      \item Overconfident models can bias occupancy predictions, while underconfident models reduce utility for expert review---reliable uncertainty is critical for transparent environmental decision-making
+      \item The calibration of multi-label deep learning classifiers in bioacoustics has not yet been systematically assessed
+    \end{itemize}
+  }
+
+  \headerbox{Contributions}{name=contributions, span=3, row=0, column=3, bottomaligned=motivation}{
+    \boxtextsize
+    \begin{minipage}[t]{0.38\textwidth}
+      \vspace{0pt}
+      \includegraphics[width=\textwidth]{../paper/figures/reliability-combined.pdf}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.58\textwidth}
+      \vspace{0pt}
+      \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
+        \item \textbf{C1.} Benchmark calibration of four state-of-the-art multi-label bird sound classifiers on BirdSet, reporting global, per-dataset and per-class calibration with threshold-free metrics
+        \item \textbf{C2.} Investigate post hoc strategies (temperature and Platt scaling): Platt scaling with 10 minutes of test data can significantly improve calibration
+        \item \textbf{C3.} Summarise implications for practitioners: deployment-specific calibration evaluation and improvement
+      \end{itemize}
+    \end{minipage}
+  }
+
+  \headerbox{Benchmarking the Calibration of Bird Sound Classifiers}{name=benchmarking, span=6, below=motivation, column=0}{
+    \boxtextsize
+    % Three diagrams side-by-side on top
+    \begin{minipage}[t]{\linewidth}
+      \centering
+      \includegraphics[width=0.32\linewidth]{../paper/figures/convnext_bs_reliability_diagram.pdf}\hfill
+      \includegraphics[width=0.32\linewidth]{../paper/figures/ece-vs-sample-count.pdf}\hfill
+      \includegraphics[width=0.32\linewidth]{../paper/figures/reliability-top-bottom.pdf}
+    \end{minipage}
+    \vspace{0.5em}
+    % Experimental setting
+    \textbf{Experimental setting.} \textbf{Models:} AudioProtoPNet, BirdMAE, ConvNeXt$_{\mathrm{BS}}$, Perch v2 (multi-label classifiers on BirdSet). \textbf{BirdSet:} Eight expert-annotated test datasets from PAM deployments. \textbf{Metrics:} ECE (expected calibration error), MCS (miscalibration score), OCS/UCS (over/underconfidence); cmAP for discrimination.
+    \vspace{0.4em}
+    % Results summary
+    \RaggedRight
+    \textbf{Results.} Globally, Perch v2 and ConvNeXt$_{\mathrm{BS}}$ are underconfident; AudioProtoPNet and BirdMAE are overconfident. Calibration varies significantly per dataset; combined ECE can mask domain-specific miscalibration, so per-dataset evaluation is essential. Class-wise ECE (centre figure) shows Perch v2 and ConvNeXt$_{\mathrm{BS}}$ with low, well-structured ECE; AudioProtoPNet and BirdMAE exhibit larger spread. For common vs.\ rare species (right), rare classes shift toward overconfidence for AudioProtoPNet and BirdMAE; Perch v2 and ConvNeXt$_{\mathrm{BS}}$ remain underconfident for both subsets. Class-wise calibration appears better for less-frequent classes.
+  }
+
+  \headerbox{Post-hoc Calibration}{name=posthoc, span=3, below=benchmarking, above=foottext, column=0}{
+    \boxtextsize
+    \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
+      \item Temperature scaling (TS) and Platt scaling (PS) evaluated with two calibration sets: global parameters on POW and per-class parameters on the first 10 minutes of each test dataset
+      \item Per-class Platt scaling with 10 minutes of labelled data provides the most reliable calibration improvement
+      \item Global scaling benefits Perch v2 and ConvNeXt$_{\mathrm{BS}}$ but can degrade AudioProtoPNet and BirdMAE on certain datasets
+      \item No method consistently outperforms across all models and datasets---calibration improvement is domain-specific
+    \end{itemize}
+  }
+
+  \headerbox{Conclusions}{name=conclusions, span=3, below=benchmarking, above=foottext, column=3}{
+    \boxtextsize
+    \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
+      \item Calibration varies substantially across datasets and classes; aggregating across domains can mask systematic miscalibration
+      \item Perch v2 and ConvNeXt$_{\mathrm{BS}}$ consistently underconfident; AudioProtoPNet and BirdMAE show mixed over-/underconfidence
+      \item Simple post hoc methods (Platt scaling with 10 min labelled data) can significantly improve deployment-specific calibration
+      \item Recommend reporting OCS/UCS alongside ECE or MCS to reveal whether errors stem from over- or underconfidence
+      \item Future work: Bayesian approaches, calibration@k metrics, and evaluation across additional deployment scenarios
+    \end{itemize}
+  }
+\end{poster}
+\end{document}

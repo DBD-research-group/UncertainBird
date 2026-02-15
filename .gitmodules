@@ -1,3 +1,6 @@
 [submodule ".devcontainer"]
 	path = .devcontainer
 	url = git@github.com:raphaelschwinger/cuda-python-devcontainer.git
+[submodule "paper"]
+	path = paper
+	url = https://git@git.overleaf.com/68b6b6eb6922d119c9943260
