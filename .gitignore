@@ -195,3 +195,5 @@ models/*
 *.fdb_latexmk
 *.gz
 *.fls
+
+.DS_Store

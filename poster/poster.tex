@@ -12,6 +12,7 @@
 \usepackage{graphicx}
 \usepackage[percent]{overpic}
 \usepackage{siunitx}
+\sisetup{detect-weight=true, mode=text}
 \usepackage{tabto}
 \usepackage{booktabs}
 \usepackage{amsmath}
@@ -35,10 +36,15 @@
 \newcommand{\boxtextsize}{\large}
 \setlength{\unitlength}{1.0cm}
 %
-% define cern blue
-% \definecolor{cernblue}{cmyk}{100,75,0,0} %for text / color / logo
-\definecolor{cernblue}{HTML}{083577} %for text / color / logo
-\definecolor{tfblue}{HTML}{083577} %for text / color / logo
+% Override baposter's cmyk color model to output RGB directly in the PDF.
+% baposter loads xcolor with [cmyk], which converts all colors to CMYK.
+% CMYK device colors render differently than sRGB on screen, causing a mismatch
+% with embedded raster images (like logos) that are in sRGB.
+\selectcolormodel{rgb}
+%
+% define INS blue (sRGB values matching the INS logo)
+\definecolor{cernblue}{rgb}{0.113, 0.202, 0.380}
+\definecolor{tfblue}{rgb}{0.113, 0.202, 0.380}
 
 % fonts
 \usepackage[scaled]{helvet}
@@ -58,7 +64,7 @@
     eyecatcher=false,
     borderColor=cernblue,
     headerColorOne=cernblue, %white,
-    headershade=plain,
+    headershade =plain,
     %headerColorTwo=white,
     headerborder=open,
     % for rectangular boxes change the next two options, rectangular header will cause left aligning of box title
@@ -92,10 +98,11 @@
             \huge\bf\color{tfblue}\selectfont Uncertainty Calibration of \\ Multi-Label Bird Sound Classifiers \vspace{0.15cm} \\
             % Authors
             \vspace{0.2cm}
-            \small\color{black} Raphael Schwinger, Ben McEwen, Vincent S.\ Kather, Ren\'e Heinrich, Lukas Rauch, and Sven Tomforde \\
-            \small INS Kiel University, Tilburg University, Naturalis Biodiversity Center, Fraunhofer IEE, University of Kassel \\
+            \small\color{black} Raphael Schwinger\textsuperscript{1}, Ben McEwen\textsuperscript{2}, Vincent S.\ Kather\textsuperscript{2,3}, Ren\'e Heinrich\textsuperscript{4,5}, Lukas Rauch\textsuperscript{5}, and Sven Tomforde\textsuperscript{1} \\
+            \small \textsuperscript{1}Kiel University, \textsuperscript{2}Tilburg University, \textsuperscript{3}Naturalis Biodiversity Center, \textsuperscript{4}Fraunhofer IEE, \textsuperscript{5}University of Kassel \\
             \small\textit{raphael.schwinger@cs.uni-kiel.de}
 
+            \vspace{1em}
           \end{center}
       \end{minipage}}
       %
@@ -132,19 +139,22 @@
       $\quad$\textbf{\small\color{tfblue}KEY REFERENCES}\footnotesize\\
       \renewcommand{\section}[2]{}
       \begin{thebibliography}{9}
-        \vspace{-0.1cm}
+        \vspace{-0.2cm}
         \begin{tiny}
           \vspace{-0.1cm}
           \bibitem{birdset}
-          L. Rauch et al., ``BirdSet: A Large-Scale Dataset for Audio Classification in Avian Bioacoustics''. arXiv, 2024, doi: 10.48550/arXiv.2403.10380.
+          L. Rauch et al., ``BirdSet: A Large-Scale Dataset for Audio Classification in Avian Bioacoustics''. ICLR, 2025.
           \bibitem{birdmae}
-          L. Rauch et al., ``Can Masked Autoencoders Also Listen to Birds?''. arXiv, 2025.
+          L. Rauch et al., ``Can Masked Autoencoders Also Listen to Birds?''. TMLR, 2025.
+          \bibitem{heinrich2025audioproto}
+          R. Heinrich et al., ``AudioProtoPNet: An interpretable deep learning model for bird sound classification''. Ecological Informatics, 2025.
           \bibitem{perchv2}
-          J. Merri\"enboer et al., ``Perch 2.0: Bittern and beyond''. arXiv, 2025.
+          B. van Merri\"enboer et al., ``Perch 2.0: The Bittern Lesson for Bioacoustics''. arXiv, 2025.
           \bibitem{guo2017calibration}
           C. Guo et al., ``On Calibration of Modern Neural Networks''. ICML, 2017.
           \bibitem{platt1999probabilistic}
           J. Platt, ``Probabilistic Outputs for Support Vector Machines and Comparisons to Regularized Likelihood Methods''. Advances in Large Margin Classifiers, 1999.
+          \par
         \end{tiny}
       \end{thebibliography}
     \end{minipage}
@@ -202,28 +212,12 @@
       \begin{minipage}{\textwidth}
         \begin{center}
           % DO NOT FORGET to replace link by link to your or cern website!
-          \qrcode[hyperlink,height=.35\textwidth]{https://github.com/DBD-research-group/UncertainBird}
+          \qrcode[hyperlink,height=.25\textwidth]{https://github.com/DBD-research-group/UncertainBird}
         \end{center}
       \end{minipage}
-      % \begin{minipage}{.64\textwidth}
-      %    \vspace{.3cm}
-      %   \color{cernblue}
-      %   \footnotesize
-      %    % insert your details!
-      %   \textbf{Main Author}\\
-      %    CERN -- XX Department \\
-      %    Group \\
-      %    Section \\$\;$\\
-      %   main.auhtor@cern.ch\\
-      %   %Fon: +xx xxxxx xxxxx\\
-      % \end{minipage}
-      \vspace{0.3cm}
-      \color{cernblue}
-      \small
       \begin{center}
-        \texttt{github.com/}\\[0.5ex]
-        \texttt{DBD-research-group/}\\[0.2ex]
-        \texttt{UncertainBird}
+        \color{cernblue}
+        \small\url{github.com/DBD-research-group/UncertainBird}
       \end{center}
     \end{minipage}
   }
@@ -241,23 +235,24 @@
   \headerbox{}{name=motivation, column=0, row=0, span=3, headershape=rectangle, textborder=none, boxheaderheight=0pt, borderColor=white}{
     \begin{center}
       \includegraphics[width=0.6\textwidth]{../paper/figures/reliability-combined.pdf}
-      \captionof{figure}{Reliability diagrams of multi-label bird sound classifiers on BirdSet~\cite{birdset}.}
+      \captionof{figure}{Reliability diagrams of bird sound classifiers on BirdSet~\cite{birdset}.}\label{fig:reliability-combined}
     \end{center}
   }
 
   \headerbox{Contributions}{name=contributions, span=3, row=0, column=3, bottomaligned=motivation}{
     \large
+    \vspace{1em}
     \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
       \item \textbf{C1.} \textbf{Benchmark calibration} of four state-of-the-art multi-label bird sound classifiers on BirdSet~\cite{birdset}, reporting global, per-dataset and per-class calibration with threshold-free metrics
       \item \textbf{C2.} \textbf{Investigate post hoc strategies} (temperature~\cite{guo2017calibration} and Platt scaling~\cite{platt1999probabilistic}): Platt scaling with 10 minutes of test data can significantly improve calibration
-      \item \textbf{C3.} \textbf{Summarise implications} to give practition-
-        ers concrete suggestions for deployment specific calibration evaluation and improvement.
+      \item \textbf{C3.} \textbf{Summarise implications} to give \mbox{practitioners} concrete suggestions for deployment-specific calibration evaluation and improvement.
     \end{itemize}
   }
 
   \headerbox{Benchmarking the Calibration of Bird Sound Classifiers}{name=benchmarking, span=6, below=motivation, column=0}{
     \boxtextsize
     % Three diagrams side-by-side on top
+    \vspace{0.5em}
     \begin{minipage}[t]{\linewidth}
       \centering
       \captionsetup{type=figure}
@@ -280,33 +275,36 @@
         \label{fig:reliability-top-bottom}
       \end{subfigure}
     \end{minipage}
-    \vspace{0.5em}
+    \hfill\vline\hfill
     % Experimental setting
-    \textbf{Experimental setting:}
-    \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
-      \item \textbf{Models:} AudioProtoPNet, BirdMAE~\cite{birdmae}, ConvNeXt$_{\mathrm{BS}}$~\cite{birdset}, Perch v2~\cite{perchv2} (multi-label classifiers on BirdSet~\cite{birdset}).
-      \item \textbf{BirdSet:} Eight expert-annotated test datasets from PAM deployments.
-      \item \textbf{Metrics:} ECE (expected calibration error), MCS (miscalibration score), OCS/UCS (over/underconfidence); cmAP for discrimination.
-    \end{itemize}
+    \vspace{0.5em}
+    \begin{minipage}[t]{\linewidth}
+      \textbf{Experimental setting:}
+      \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
+        \item \textbf{Models:} AudioProtoPNet~\cite{heinrich2025audioproto}, BirdMAE~\cite{birdmae}, ConvNeXt$_{\mathrm{BS}}$~\cite{birdset}, Perch v2~\cite{perchv2} (multi-label classifiers on BirdSet~\cite{birdset}).
+        \item \textbf{BirdSet:} Eight expert-annotated test datasets from PAM deployments.
+        \item \textbf{Metrics:} ECE (expected calibration error), MCS (miscalibration score), OCS/UCS (over/underconfidence); cmAP for discrimination.
+      \end{itemize}
+    \end{minipage}
+
     \vspace{0.4em}
     % Results summary
     \RaggedRight
     \textbf{Results:}
     \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
-      \item Globally, Perch v2 and ConvNeXt$_{\mathrm{BS}}$ are underconfident; AudioProtoPNet and BirdMAE are overconfident (Fig.~\ref{fig:convnext-reliability}).
+      \item Globally, Perch v2 and ConvNeXt$_{\mathrm{BS}}$ are underconfident; AudioProtoPNet and BirdMAE are overconfident (Fig.~\ref{fig:reliability-combined}).
       \item \textit{Calibration varies significantly per dataset} (Fig.~\ref{fig:convnext-reliability}); combined ECE can mask domain-specific miscalibration.
-      \item Class-wise ECE (Fig.~\ref{fig:ece-vs-sample}) shows Perch v2 and ConvNeXt$_{\mathrm{BS}}$ with low ECE, increasing with numbers of samples per class.
+      \item Class-wise ECE (Fig.~\ref{fig:ece-vs-sample}) shows Perch v2 and ConvNeXt$_{\mathrm{BS}}$ with low ECE, increasing with the number of samples per class.
       \item For common vs.\ rare species (Fig.~\ref{fig:reliability-top-bottom}), rare classes shift toward overconfidence for AudioProtoPNet and BirdMAE; Perch v2 and ConvNeXt$_{\mathrm{BS}}$ remain underconfident for both subsets.
     \end{itemize}
   }
 
-  \headerbox{Post-hoc Calibration}{name=posthoc, span=3, below=benchmarking, above=foottext, column=0}{
+  \headerbox{Post Hoc Calibration}{name=posthoc, span=3, below=benchmarking, above=foottext, column=0}{
     \boxtextsize
     \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
       \item \textbf{Temperature scaling} (TS) and \textbf{Platt scaling} (PS) evaluated with two calibration sets: global parameters on POW and per-class parameters on the first 10 minutes of each test dataset.
-      \item Per-class Platt scaling with 10 minutes of labelled data provides the most consistent calibration improvement across models and datasets.
+      \item Per-class Platt scaling provides the most consistent calibration improvement across models and datasets, while even global scaling can improve calibration.
     \end{itemize}
-    \vspace{0.3em}
     \begin{center}
       \setlength{\tabcolsep}{3pt}
       \renewcommand{\arraystretch}{1.05}
@@ -316,10 +314,10 @@
           \toprule
           \textbf{Model} & \textbf{TS POW (\%)} & \textbf{PS POW (\%)} & \textbf{TS/cl. (\%)} & \textbf{PS/cl. (\%)} \\
           \midrule
-          AudioProtoPNet & 56 & 56 & 75 & \textbf{92} \\
-          BirdMAE & 81 & 89 & 94 & \textbf{95} \\
-          ConvNeXt$\smash{_{\mathrm{BS}}}$ & 10 & 20 & \textbf{67} & 12 \\
-          Perch v2 & 33 & 24 & 23 & \textbf{61} \\
+          AudioProtoPNet & 56 & 56 & 75 & \bfseries 92 \\
+          BirdMAE & 81 & 89 & 94 & \bfseries 95 \\
+          ConvNeXt$\smash{_{\mathrm{BS}}}$ & 10 & 20 & \bfseries 67 & 12 \\
+          Perch v2 & 33 & 24 & 23 & \bfseries 61 \\
           \bottomrule
       \end{tabular}}
     \end{center}
@@ -329,11 +327,11 @@
   \headerbox{Conclusions}{name=conclusions, span=3, below=benchmarking, above=foottext, column=3}{
     \boxtextsize
     \begin{itemize}[noitemsep,topsep=0pt,parsep=0pt,partopsep=0pt, leftmargin=10pt]
-      \item Calibration varies substantially across datasets and classes; aggregating across domains can mask systematic miscalibration
-      \item Perch v2~\cite{perchv2} and ConvNeXt$_{\mathrm{BS}}$~\cite{birdset, convnext} consistently underconfident; AudioProtoPNet and BirdMAE~\cite{birdmae} show mixed over-/underconfidence
-      \item Simple post hoc methods (Platt scaling~\cite{platt1999probabilistic} with 10 min labelled data) can significantly improve deployment-specific calibration
+      \item \textbf{Calibration varies substantially across datasets and classes;} aggregating across domains can mask miscalibration
+      \item \textbf{Perch v2 and ConvNeXt$_{\mathrm{BS}}$ consistently underconfident;} AudioProtoPNet, BirdMAE show mixed over-/underconfidence
+      \item \textbf{Simple post hoc methods} (Platt scaling with 10 min labelled data) can \textbf{significantly improve deployment-specific calibration}
       \item Recommend reporting OCS/UCS alongside ECE or MCS to reveal whether errors stem from over- or underconfidence
-      \item Future work: Bayesian approaches, calibration@k metrics, and evaluation across additional deployment scenarios
+      \item \textbf{Future work:} Bayesian approaches, calibration@k metrics, and evaluation across additional deployment scenarios
     \end{itemize}
   }
 \end{poster}
