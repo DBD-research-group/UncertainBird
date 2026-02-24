@@ -197,3 +197,6 @@ models/*
 *.fls
 
 .DS_Store
+
+*_arXiv/
+paper_arXiv.zip
